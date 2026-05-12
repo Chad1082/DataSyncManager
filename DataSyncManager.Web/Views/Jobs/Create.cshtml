@@ -25,6 +25,8 @@
     <input asp-for="ProjectName" type="hidden" />
     <input asp-for="SelectedFieldsJson" type="hidden" id="selectedFieldsJson" />
 
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2 small" role="alert"></div>
+
     <div class="row g-4">
         <!-- LEFT: Config -->
         <div class="col-lg-7">
@@ -126,13 +128,19 @@
                     </div>
                     <div id="upsertPanel">
                         <div class="mb-3">
-                            <label asp-for="UniqueKeyFields" class="form-label fw-semibold">Unique Key Fields</label>
-                            <input asp-for="UniqueKeyFields" class="form-control font-monospace" placeholder="Id, Code" />
-                            <small class="text-muted">Comma-separated field names used to identify unique rows.</small>
+                            <label class="form-label fw-semibold">Unique Key Fields</label>
+                            <select id="uniqueKeySelect" class="form-select" multiple size="4">
+                                <option disabled class="text-muted fst-italic">Load a source table first</option>
+                            </select>
+                            <input asp-for="UniqueKeyFields" type="hidden" />
+                            <small class="text-muted">Hold <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> to select multiple fields. Used to identify unique rows for upsert.</small>
                         </div>
                         <div class="mb-3">
-                            <label asp-for="ChangeDateField" class="form-label fw-semibold">Change Detection Date Field</label>
-                            <input asp-for="ChangeDateField" class="form-control font-monospace" placeholder="UpdatedAt" />
+                            <label class="form-label fw-semibold">Change Detection Date Field</label>
+                            <select id="changeDateSelect" class="form-select">
+                                <option value="">— Load a source table first —</option>
+                            </select>
+                            <input asp-for="ChangeDateField" type="hidden" />
                             <small class="text-muted">Field used to detect rows modified since the last run.</small>
                         </div>
                     </div>
@@ -203,133 +211,171 @@
 </form>
 
 @section Scripts {
-<script>
-const sourceServerId = @Model.ProjectSourceServer?.Id;
-let selectedFields = @Html.Raw(Model.SelectedFieldsJson ?? "[]");
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+    <script>
+        const sourceServerId = @Model.ProjectSourceServer?.Id;
+        let selectedFields = @Html.Raw(Model.SelectedFieldsJson ?? "[]");
 
-// ── Source table loading ──────────────────────────
+        // ── Source table loading ──────────────────────────
 
-async function loadSourceTables() {
-    const r = await fetch(`/Servers/GetSourceTables?serverId=${sourceServerId}`);
-    const tables = await r.json();
-    const sel = document.getElementById('sourceTableSelect');
-    sel.innerHTML = '<option value="">— Select table —</option>';
-    tables.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t; opt.textContent = t;
-        if (t === '@Model.SourceTable') opt.selected = true;
-        sel.appendChild(opt);
-    });
-    if ('@Model.SourceTable') loadSourceColumns('@Model.SourceTable');
-}
+        async function loadSourceTables() {
+            const r = await fetch(`/Servers/GetSourceTables?serverId=${sourceServerId}`);
+            const tables = await r.json();
+            const sel = document.getElementById('sourceTableSelect');
+            sel.innerHTML = '<option value="">— Select table —</option>';
+            tables.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t; opt.textContent = t;
+                if (t === '@Model.SourceTable') opt.selected = true;
+                sel.appendChild(opt);
+            });
+            if ('@Model.SourceTable') loadSourceColumns('@Model.SourceTable');
+        }
 
-async function loadSourceColumns(tableName) {
-    document.getElementById('fieldsPlaceholder').style.display = '';
-    document.getElementById('fieldsList').innerHTML = '';
-    const r = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(tableName)}`);
-    const cols = await r.json();
+        async function loadSourceColumns(tableName) {
+            document.getElementById('fieldsPlaceholder').style.display = '';
+            document.getElementById('fieldsList').innerHTML = '';
+            const r = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(tableName)}`);
+            const cols = await r.json();
 
-    document.getElementById('fieldsPlaceholder').style.display = 'none';
-    const list = document.getElementById('fieldsList');
+            document.getElementById('fieldsPlaceholder').style.display = 'none';
+            const list = document.getElementById('fieldsList');
 
-    cols.forEach((col, i) => {
-        const existing = selectedFields.find(f => f.sourceFieldName === col.name);
-        const checked = existing ? existing.isIncluded : true;
+            cols.forEach((col) => {
+                const existing = selectedFields.find(f => f.sourceFieldName === col.name);
+                const checked = existing ? existing.isIncluded : true;
 
-        list.innerHTML += `
-          <label class="list-group-item list-group-item-action py-2">
-            <div class="d-flex align-items-center gap-2">
-              <input type="checkbox" class="form-check-input field-check" ${checked ? 'checked' : ''}
-                     data-name="${col.name}" data-type="${col.dataType}" data-maxlen="${col.maxLength}" data-nullable="${col.isNullable}" />
-              <div class="flex-grow-1">
-                <div class="fw-semibold small">${col.name}</div>
-                <div class="text-muted" style="font-size:.7rem;">${col.dataType}${col.maxLength > 0 ? '(' + col.maxLength + ')' : ''} ${col.isNullable ? 'NULL' : 'NOT NULL'}</div>
-              </div>
-            </div>
-          </label>`;
-    });
+                list.innerHTML += `
+                  <label class="list-group-item list-group-item-action py-2">
+                    <div class="d-flex align-items-center gap-2">
+                      <input type="checkbox" class="form-check-input field-check" ${checked ? 'checked' : ''}
+                             data-name="${col.name}" data-type="${col.dataType}" data-maxlen="${col.maxLength}" data-nullable="${col.isNullable}" />
+                      <div class="flex-grow-1">
+                        <div class="fw-semibold small">${col.name}</div>
+                        <div class="text-muted" style="font-size:.7rem;">${col.dataType}${col.maxLength > 0 ? '(' + col.maxLength + ')' : ''} ${col.isNullable ? 'NULL' : 'NOT NULL'}</div>
+                      </div>
+                    </div>
+                  </label>`;
+            });
 
-    document.querySelectorAll('.field-check').forEach(cb =>
-        cb.addEventListener('change', updateFieldCount));
-    updateFieldCount();
-}
+            document.querySelectorAll('.field-check').forEach(cb =>
+                cb.addEventListener('change', updateFieldCount));
+            updateFieldCount();
 
-function updateFieldCount() {
-    const total = document.querySelectorAll('.field-check').length;
-    const sel = document.querySelectorAll('.field-check:checked').length;
-    document.getElementById('fieldCount').textContent = `${sel} of ${total} fields selected`;
-}
+            // ── Populate unique key and change date selects ──
+            const uniqueSel = document.getElementById('uniqueKeySelect');
+            const dateSel   = document.getElementById('changeDateSelect');
 
-document.getElementById('sourceTableSelect').addEventListener('change', function () {
-    document.getElementById('sourceTableHidden').value = this.value;
-    if (this.value) loadSourceColumns(this.value);
-});
+            const currentKeys = document.getElementById('UniqueKeyFields').value
+                .split(',').map(s => s.trim()).filter(Boolean);
+            const currentDate = document.getElementById('ChangeDateField').value;
 
-document.getElementById('loadTablesBtn').addEventListener('click', loadSourceTables);
-document.getElementById('selectAllBtn').addEventListener('click', () => {
-    document.querySelectorAll('.field-check').forEach(c => c.checked = true);
-    updateFieldCount();
-});
-document.getElementById('deselectAllBtn').addEventListener('click', () => {
-    document.querySelectorAll('.field-check').forEach(c => c.checked = false);
-    updateFieldCount();
-});
+            uniqueSel.innerHTML = '';
+            dateSel.innerHTML   = '<option value="">— none —</option>';
 
-// ── Destination table loading ─────────────────────
+            cols.forEach(col => {
+                const o1 = document.createElement('option');
+                o1.value = col.name;
+                o1.textContent = col.name;
+                o1.selected = currentKeys.includes(col.name);
+                uniqueSel.appendChild(o1);
 
-async function loadDestTables() {
-    const serverId = document.getElementById('DestinationServerId').value;
-    const database = document.getElementById('DestinationDatabase').value;
-    if (!serverId || !database) { alert('Select a destination server and enter the database name first.'); return; }
+                const o2 = document.createElement('option');
+                o2.value = col.name;
+                o2.textContent = `${col.name}  (${col.dataType})`;
+                o2.selected = col.name === currentDate;
+                dateSel.appendChild(o2);
+            });
+        }
 
-    const r = await fetch(`/Servers/GetDestinationTables?serverId=${serverId}&database=${encodeURIComponent(database)}`);
-    const tables = await r.json();
-    const sel = document.getElementById('destTableSelect');
-    sel.innerHTML = '<option value="__new__">— Create new table —</option>';
-    tables.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t; opt.textContent = t;
-        if (t === '@Model.DestinationTable') opt.selected = true;
-        sel.appendChild(opt);
-    });
-}
+        function updateFieldCount() {
+            const total = document.querySelectorAll('.field-check').length;
+            const sel   = document.querySelectorAll('.field-check:checked').length;
+            document.getElementById('fieldCount').textContent = `${sel} of ${total} fields selected`;
+        }
 
-document.getElementById('destTableSelect').addEventListener('change', function () {
-    document.getElementById('destTableHidden').value = this.value === '__new__' ? '' : this.value;
-});
-document.getElementById('loadDestTablesBtn').addEventListener('click', loadDestTables);
+        document.getElementById('sourceTableSelect').addEventListener('change', function () {
+            document.getElementById('sourceTableHidden').value = this.value;
+            if (this.value) loadSourceColumns(this.value);
+        });
 
-// ── Sync mode toggle ──────────────────────────────
+        document.getElementById('loadTablesBtn').addEventListener('click', loadSourceTables);
+        document.getElementById('selectAllBtn').addEventListener('click', () => {
+            document.querySelectorAll('.field-check').forEach(c => c.checked = true);
+            updateFieldCount();
+        });
+        document.getElementById('deselectAllBtn').addEventListener('click', () => {
+            document.querySelectorAll('.field-check').forEach(c => c.checked = false);
+            updateFieldCount();
+        });
 
-document.getElementById('syncModeSelect').addEventListener('change', function () {
-    document.getElementById('upsertPanel').style.display = this.value === 'Upsert' ? '' : 'none';
-});
-const initialMode = document.getElementById('syncModeSelect').value;
-document.getElementById('upsertPanel').style.display = initialMode === 'Upsert' ? '' : 'none';
+        // ── Destination table loading ─────────────────────
 
-// ── Form submit: serialise selected fields ────────
+        async function loadDestTables() {
+            const serverId = document.getElementById('DestinationServerId').value;
+            const database = document.getElementById('DestinationDatabase').value;
+            if (!serverId || !database) { alert('Select a destination server and enter the database name first.'); return; }
 
-document.getElementById('jobForm').addEventListener('submit', function () {
-    const fields = [...document.querySelectorAll('.field-check')].map(cb => ({
-        sourceFieldName: cb.dataset.name,
-        destinationFieldName: cb.dataset.name,
-        dataType: cb.dataset.type,
-        maxLength: parseInt(cb.dataset.maxlen),
-        isNullable: cb.dataset.nullable === 'true',
-        isIncluded: cb.checked
-    }));
-    document.getElementById('selectedFieldsJson').value = JSON.stringify(fields.filter(f => f.isIncluded));
+            const r = await fetch(`/Servers/GetDestinationTables?serverId=${serverId}&database=${encodeURIComponent(database)}`);
+            const tables = await r.json();
+            const sel = document.getElementById('destTableSelect');
+            sel.innerHTML = '<option value="__new__">— Create new table —</option>';
+            tables.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t; opt.textContent = t;
+                if (t === '@Model.DestinationTable') opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
 
-    // Set destination table
-    const destSel = document.getElementById('destTableSelect').value;
-    if (destSel && destSel !== '__new__')
-        document.getElementById('destTableHidden').value = destSel;
+        document.getElementById('destTableSelect').addEventListener('change', function () {
+            document.getElementById('destTableHidden').value = this.value === '__new__' ? '' : this.value;
+        });
+        document.getElementById('loadDestTablesBtn').addEventListener('click', loadDestTables);
 
-    // Set source table
-    document.getElementById('sourceTableHidden').value = document.getElementById('sourceTableSelect').value;
-});
+        // ── Sync mode toggle ──────────────────────────────
 
-// ── Init ──────────────────────────────────────────
-loadSourceTables();
-</script>
+        document.getElementById('syncModeSelect').addEventListener('change', function () {
+            document.getElementById('upsertPanel').style.display = this.value === 'Upsert' ? '' : 'none';
+        });
+        const initialMode = document.getElementById('syncModeSelect').value;
+        document.getElementById('upsertPanel').style.display = initialMode === 'Upsert' ? '' : 'none';
+
+        // ── Form submit: serialise all values before posting ─
+
+        document.getElementById('jobForm').addEventListener('submit', function () {
+            // Serialise selected fields
+            const fields = [...document.querySelectorAll('.field-check')].map(cb => ({
+                sourceFieldName: cb.dataset.name,
+                destinationFieldName: cb.dataset.name,
+                dataType: cb.dataset.type,
+                maxLength: parseInt(cb.dataset.maxlen),
+                isNullable: cb.dataset.nullable === 'true',
+                isIncluded: cb.checked
+            }));
+            document.getElementById('selectedFieldsJson').value = JSON.stringify(fields.filter(f => f.isIncluded));
+
+            // Source table
+            document.getElementById('sourceTableHidden').value = document.getElementById('sourceTableSelect').value;
+
+            // Destination table
+            const destSel = document.getElementById('destTableSelect').value;
+            if (destSel && destSel !== '__new__')
+                document.getElementById('destTableHidden').value = destSel;
+
+            // Unique key fields — convert multi-select to comma-separated string
+            const keys = [...document.querySelectorAll('#uniqueKeySelect option:checked')]
+                .map(o => o.value).join(', ');
+            document.getElementById('UniqueKeyFields').value = keys;
+
+            // Change detection date field
+            document.getElementById('ChangeDateField').value =
+                document.getElementById('changeDateSelect').value;
+        });
+
+        // ── Init ──────────────────────────────────────────
+        loadSourceTables();
+    </script>
 }

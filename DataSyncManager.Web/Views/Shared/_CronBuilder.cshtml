@@ -1,0 +1,303 @@
+﻿@* Renders a friendly cron expression builder.
+   Usage: @await Html.PartialAsync("_CronBuilder", Model.CronExpression ?? "")
+   Outputs: <input type="hidden" name="CronExpression" id="cbHidden" /> *@
+@model string
+@{
+    var initExpr = Model ?? "";
+}
+
+<div class="cron-builder">
+
+    <div class="mb-3">
+        <label class="form-label fw-semibold">Run frequency</label>
+        <select id="cbType" class="form-select">
+            <option value="interval">Every N minutes</option>
+            <option value="hourly">Hourly</option>
+            <option value="daily">Daily</option>
+            <option value="weekdays">Weekdays only (Mon–Fri)</option>
+            <option value="weekly">Weekly — pick specific days</option>
+            <option value="monthly">Monthly</option>
+            <option value="custom">Custom expression</option>
+        </select>
+    </div>
+
+    <!-- Every N minutes -->
+    <div id="cbPanel-interval" class="cb-panel rounded border p-3 bg-light mb-3">
+        <div class="d-flex align-items-center gap-3">
+            <span class="fw-semibold">Every</span>
+            <select id="cbInterval" class="form-select" style="width:110px;"></select>
+            <span class="text-muted">minutes</span>
+        </div>
+    </div>
+
+    <!-- Hourly -->
+    <div id="cbPanel-hourly" class="cb-panel rounded border p-3 bg-light mb-3 d-none">
+        <div class="d-flex align-items-center gap-3">
+            <span class="fw-semibold">At minute</span>
+            <select id="cbHourlyMin" class="form-select" style="width:90px;"></select>
+            <span class="text-muted">past each hour</span>
+        </div>
+    </div>
+
+    <!-- Daily -->
+    <div id="cbPanel-daily" class="cb-panel rounded border p-3 bg-light mb-3 d-none">
+        <div class="d-flex align-items-center gap-3">
+            <span class="fw-semibold">At</span>
+            <select id="cbDailyH" class="form-select" style="width:90px;"></select>
+            <span class="fw-bold text-muted">:</span>
+            <select id="cbDailyM" class="form-select" style="width:90px;"></select>
+        </div>
+    </div>
+
+    <!-- Weekdays -->
+    <div id="cbPanel-weekdays" class="cb-panel rounded border p-3 bg-light mb-3 d-none">
+        <div class="d-flex align-items-center gap-3">
+            <span class="fw-semibold">Mon–Fri at</span>
+            <select id="cbWdH" class="form-select" style="width:90px;"></select>
+            <span class="fw-bold text-muted">:</span>
+            <select id="cbWdM" class="form-select" style="width:90px;"></select>
+        </div>
+    </div>
+
+    <!-- Weekly -->
+    <div id="cbPanel-weekly" class="cb-panel rounded border p-3 bg-light mb-3 d-none">
+        <div class="mb-3">
+            <span class="fw-semibold d-block mb-2">On days</span>
+            <div class="d-flex flex-wrap gap-3">
+                @foreach (var (label, val) in new[] { ("Mon", "1"), ("Tue", "2"), ("Wed", "3"), ("Thu", "4"), ("Fri", "5"), ("Sat", "6"), ("Sun", "0") })
+                {
+                    <div class="form-check m-0">
+                        <input class="form-check-input cb-weekday" type="checkbox" id="cbDay@val" value="@val" />
+                        <label class="form-check-label" for="cbDay@val">@label</label>
+                    </div>
+                }
+            </div>
+            <div class="text-danger small mt-1 d-none" id="cbWeeklyError">Select at least one day.</div>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <span class="fw-semibold">At</span>
+            <select id="cbWeeklyH" class="form-select" style="width:90px;"></select>
+            <span class="fw-bold text-muted">:</span>
+            <select id="cbWeeklyM" class="form-select" style="width:90px;"></select>
+        </div>
+    </div>
+
+    <!-- Monthly -->
+    <div id="cbPanel-monthly" class="cb-panel rounded border p-3 bg-light mb-3 d-none">
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <span class="fw-semibold">On day</span>
+            <select id="cbMonthDay" class="form-select" style="width:90px;"></select>
+            <span class="text-muted">of each month</span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <span class="fw-semibold">At</span>
+            <select id="cbMonthlyH" class="form-select" style="width:90px;"></select>
+            <span class="fw-bold text-muted">:</span>
+            <select id="cbMonthlyM" class="form-select" style="width:90px;"></select>
+        </div>
+    </div>
+
+    <!-- Custom -->
+    <div id="cbPanel-custom" class="cb-panel mb-3 d-none">
+        <label class="form-label fw-semibold">Expression</label>
+        <input type="text" id="cbCustom" class="form-control font-monospace" placeholder="0 2 * * *" />
+        <small class="text-muted">5-field format: <code>minute  hour  day-of-month  month  day-of-week</code></small>
+    </div>
+
+    <!-- Live preview -->
+    <div class="rounded border p-3 d-flex align-items-center gap-4 flex-wrap" style="background:#f8fafc;">
+        <div>
+            <div class="text-muted small text-uppercase fw-semibold mb-1">Expression</div>
+            <code id="cbPreviewExpr" class="fs-6 text-dark">–</code>
+        </div>
+        <div class="vr d-none d-sm-block"></div>
+        <div>
+            <div class="text-muted small text-uppercase fw-semibold mb-1">Runs</div>
+            <span id="cbPreviewDesc" class="small fw-semibold text-success"></span>
+        </div>
+        <a id="cbGuruLink" href="https://crontab.guru" target="_blank"
+               class="btn btn-sm btn-outline-secondary ms-auto">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Verify on crontab.guru
+        </a>
+    </div>
+
+    <input type="hidden" id="cbHidden" name="CronExpression" value="@initExpr" />
+</div>
+
+<script>
+    (function () {
+        var initExpr = @Json.Serialize(initExpr);
+
+        // ── Helpers ───────────────────────────────────
+        function p2(n) { return String(n).padStart(2, '0'); }
+        function sv(id) { return document.getElementById(id).value; }
+
+        function fillSel(id, opts) {
+            document.getElementById(id).innerHTML =
+                opts.map(function(o) { return '<option value="' + o.v + '">' + o.l + '</option>'; }).join('');
+        }
+
+        // ── Populate selects ──────────────────────────
+        fillSel('cbInterval',  [5,10,15,20,30,45].map(function(n){ return {v:n, l:n+' min'}; }));
+        fillSel('cbHourlyMin', Array.from({length:60}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbDailyH',    Array.from({length:24}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbDailyM',    Array.from({length:60}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbWdH',       Array.from({length:24}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbWdM',       Array.from({length:60}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbWeeklyH',   Array.from({length:24}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbWeeklyM',   Array.from({length:60}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbMonthlyH',  Array.from({length:24}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbMonthlyM',  Array.from({length:60}, function(_,i){ return {v:i, l:p2(i)}; }));
+        fillSel('cbMonthDay',  Array.from({length:28}, function(_,i){ return {v:i+1, l:String(i+1)}; }));
+
+        var DAY_NAMES = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
+
+        // ── Build cron expression ─────────────────────
+        function buildExpr() {
+            switch (sv('cbType')) {
+                case 'interval':  return '*/' + sv('cbInterval') + ' * * * *';
+                case 'hourly':    return sv('cbHourlyMin') + ' * * * *';
+                case 'daily':     return sv('cbDailyM') + ' ' + sv('cbDailyH') + ' * * *';
+                case 'weekdays':  return sv('cbWdM') + ' ' + sv('cbWdH') + ' * * 1-5';
+                case 'weekly': {
+                    var days = Array.from(document.querySelectorAll('.cb-weekday:checked')).map(function(c){ return c.value; });
+                    return days.length ? sv('cbWeeklyM') + ' ' + sv('cbWeeklyH') + ' * * ' + days.join(',') : null;
+                }
+                case 'monthly':   return sv('cbMonthlyM') + ' ' + sv('cbMonthlyH') + ' ' + sv('cbMonthDay') + ' * *';
+                case 'custom':    var v = document.getElementById('cbCustom').value.trim(); return v || null;
+            }
+        }
+
+        // ── Build human description ───────────────────
+        function buildDesc() {
+            switch (sv('cbType')) {
+                case 'interval':  return 'Every ' + sv('cbInterval') + ' minutes';
+                case 'hourly':    return 'Every hour at :' + p2(sv('cbHourlyMin'));
+                case 'daily':     return 'Daily at ' + p2(sv('cbDailyH')) + ':' + p2(sv('cbDailyM'));
+                case 'weekdays':  return 'Mon\u2013Fri at ' + p2(sv('cbWdH')) + ':' + p2(sv('cbWdM'));
+                case 'weekly': {
+                    var days = Array.from(document.querySelectorAll('.cb-weekday:checked')).map(function(c){ return DAY_NAMES[c.value]; });
+                    return days.length ? days.join(', ') + ' at ' + p2(sv('cbWeeklyH')) + ':' + p2(sv('cbWeeklyM')) : '';
+                }
+                case 'monthly':   return 'Day ' + sv('cbMonthDay') + ' of each month at ' + p2(sv('cbMonthlyH')) + ':' + p2(sv('cbMonthlyM'));
+                case 'custom':    return 'Custom expression';
+            }
+        }
+
+        // ── Update preview and hidden input ───────────
+        function update() {
+            var expr = buildExpr();
+            var isWeekly = sv('cbType') === 'weekly';
+            var errEl = document.getElementById('cbWeeklyError');
+
+            if (isWeekly) errEl.classList.toggle('d-none', !!expr);
+
+            document.getElementById('cbPreviewExpr').textContent = expr || '–';
+            document.getElementById('cbPreviewDesc').textContent = expr ? buildDesc() : '';
+            document.getElementById('cbHidden').value = expr || '';
+            document.getElementById('cbGuruLink').href = expr
+                ? 'https://crontab.guru/#' + expr.replace(/ /g, '_')
+                : 'https://crontab.guru';
+        }
+
+        // ── Panel visibility ──────────────────────────
+        function showPanel(type) {
+            document.querySelectorAll('.cb-panel').forEach(function(p) { p.classList.add('d-none'); });
+            var panel = document.getElementById('cbPanel-' + type);
+            if (panel) panel.classList.remove('d-none');
+        }
+
+        // ── Event listeners ───────────────────────────
+        document.getElementById('cbType').addEventListener('change', function() {
+            showPanel(this.value);
+            update();
+        });
+
+        ['cbPanel-interval','cbPanel-hourly','cbPanel-daily','cbPanel-weekdays',
+         'cbPanel-weekly','cbPanel-monthly'].forEach(function(panelId) {
+            var panel = document.getElementById(panelId);
+            panel.querySelectorAll('select').forEach(function(el) { el.addEventListener('change', update); });
+            panel.querySelectorAll('input[type=checkbox]').forEach(function(el) { el.addEventListener('change', update); });
+        });
+
+        document.getElementById('cbCustom').addEventListener('input', update);
+
+        // ── Parse incoming expression on load ─────────
+        function isNum(s)  { return /^\d+$/.test(s); }
+
+        function parseAndInit(expr) {
+            if (!expr) { setType('daily'); update(); return; }
+
+            var parts = expr.trim().split(/\s+/);
+            if (parts.length !== 5) { setCustom(expr); update(); return; }
+
+            var min = parts[0], hour = parts[1], dom = parts[2], month = parts[3], dow = parts[4];
+
+            // Every N minutes: */N * * * *
+            var intervalMatch = min.match(/^\*\/(\d+)$/);
+            if (intervalMatch && hour==='*' && dom==='*' && month==='*' && dow==='*') {
+                var n = parseInt(intervalMatch[1]);
+                setType('interval');
+                var validIntervals = [5,10,15,20,30,45];
+                document.getElementById('cbInterval').value = validIntervals.includes(n) ? n : 15;
+                update(); return;
+            }
+            // Hourly: M * * * *
+            if (isNum(min) && hour==='*' && dom==='*' && month==='*' && dow==='*') {
+                setType('hourly');
+                document.getElementById('cbHourlyMin').value = parseInt(min);
+                update(); return;
+            }
+            // Daily: M H * * *
+            if (isNum(min) && isNum(hour) && dom==='*' && month==='*' && dow==='*') {
+                setType('daily');
+                document.getElementById('cbDailyH').value = parseInt(hour);
+                document.getElementById('cbDailyM').value = parseInt(min);
+                update(); return;
+            }
+            // Weekdays: M H * * 1-5
+            if (isNum(min) && isNum(hour) && dom==='*' && month==='*' && dow==='1-5') {
+                setType('weekdays');
+                document.getElementById('cbWdH').value = parseInt(hour);
+                document.getElementById('cbWdM').value = parseInt(min);
+                update(); return;
+            }
+            // Weekly: M H * * 1,3,5  (comma-separated day numbers)
+            if (isNum(min) && isNum(hour) && dom==='*' && month==='*' && dow !== '*' && dow !== '1-5') {
+                var days = dow.split(',').map(Number);
+                if (days.every(function(d) { return d >= 0 && d <= 6; })) {
+                    setType('weekly');
+                    document.getElementById('cbWeeklyH').value = parseInt(hour);
+                    document.getElementById('cbWeeklyM').value = parseInt(min);
+                    document.querySelectorAll('.cb-weekday').forEach(function(cb) {
+                        cb.checked = days.includes(parseInt(cb.value));
+                    });
+                    update(); return;
+                }
+            }
+            // Monthly: M H D * *
+            if (isNum(min) && isNum(hour) && isNum(dom) && month==='*' && dow==='*') {
+                setType('monthly');
+                document.getElementById('cbMonthlyH').value = parseInt(hour);
+                document.getElementById('cbMonthlyM').value = parseInt(min);
+                document.getElementById('cbMonthDay').value = parseInt(dom);
+                update(); return;
+            }
+            // Fallback: custom
+            setCustom(expr);
+            update();
+        }
+
+        function setType(type) {
+            document.getElementById('cbType').value = type;
+            showPanel(type);
+        }
+
+        function setCustom(expr) {
+            setType('custom');
+            document.getElementById('cbCustom').value = expr;
+        }
+
+        parseAndInit(initExpr);
+    })();
+</script>

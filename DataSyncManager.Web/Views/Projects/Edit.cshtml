@@ -51,15 +51,7 @@
                         <label class="form-check-label fw-semibold" for="enableSchedule">Enable scheduled runs</label>
                     </div>
                     <div id="cronPanel" class="@(string.IsNullOrEmpty(Model.CronExpression) ? "d-none" : "")">
-                        <label asp-for="CronExpression" class="form-label fw-semibold">Cron Expression</label>
-                        <input asp-for="CronExpression" class="form-control font-monospace" placeholder="0 2 * * *" />
-                        <div class="form-text">
-                            Examples: <code>0 2 * * *</code> = daily at 2am &nbsp;|&nbsp;
-                            <code>0 */6 * * *</code> = every 6 hours &nbsp;|&nbsp;
-                            <code>0 8 * * 1</code> = Mondays at 8am
-                            &nbsp;<a href="https://crontab.guru" target="_blank">crontab.guru</a>
-                        </div>
-                        <span asp-validation-for="CronExpression" class="text-danger small"></span>
+                        @await Html.PartialAsync("_CronBuilder", Model.CronExpression ?? "")
                     </div>
                 </div>
             </div>
@@ -112,9 +104,9 @@
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
     <script>
-    document.getElementById('enableSchedule').addEventListener('change', function() {
-        document.getElementById('cronPanel').classList.toggle('d-none', !this.checked);
-        if (!this.checked) document.getElementById('CronExpression').value = '';
-    });
+        document.getElementById('enableSchedule').addEventListener('change', function() {
+            document.getElementById('cronPanel').classList.toggle('d-none', !this.checked);
+            if (!this.checked) document.getElementById('cbHidden').value = '';
+        });
     </script>
 }

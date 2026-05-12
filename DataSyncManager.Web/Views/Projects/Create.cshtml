@@ -57,16 +57,7 @@
             </div>
 
             <div id="schedulePanel" class="@(Model.IsScheduled ? "" : "d-none")">
-                <div class="mb-3">
-                    <label asp-for="CronExpression" class="form-label fw-semibold">Cron Expression</label>
-                    <input asp-for="CronExpression" class="form-control font-monospace" placeholder="0 2 * * *" />
-                    <small class="text-muted">
-                        Standard 5-field cron (min hour day month weekday). Examples:
-                        <code>0 2 * * *</code> = daily 2am,
-                        <code>0 */6 * * *</code> = every 6 hours.
-                        <a href="https://crontab.guru" target="_blank">crontab.guru</a>
-                    </small>
-                </div>
+                @await Html.PartialAsync("_CronBuilder", Model.CronExpression ?? "")
             </div>
 
             <hr/>
@@ -108,8 +99,9 @@
 
 @section Scripts {
 <script>
-    document.getElementById('isScheduledToggle').addEventListener('change', function () {
-        document.getElementById('schedulePanel').classList.toggle('d-none', !this.checked);
-    });
+        document.getElementById('isScheduledToggle').addEventListener('change', function () {
+            document.getElementById('schedulePanel').classList.toggle('d-none', !this.checked);
+            if (!this.checked) document.getElementById('cbHidden').value = '';
+        });
 </script>
 }
