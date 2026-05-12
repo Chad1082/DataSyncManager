@@ -339,3 +339,43 @@ public class ChangePasswordViewModel
     [DataType(DataType.Password), Compare(nameof(NewPassword)), Display(Name = "Confirm New Password")]
     public string ConfirmNewPassword { get; set; } = string.Empty;
 }
+
+public class EmailSettingsViewModel
+{
+    [Required, MaxLength(250)]
+    [Display(Name = "SMTP Host")]
+    public string SmtpHost { get; set; } = string.Empty;
+
+    [Required, Range(1, 65535)]
+    [Display(Name = "SMTP Port")]
+    public int SmtpPort { get; set; } = 587;
+
+    [MaxLength(250)]
+    [Display(Name = "SMTP Username")]
+    public string? SmtpUser { get; set; }
+
+    // Never pre-populated — blank = keep existing
+    [MaxLength(500)]
+    [Display(Name = "SMTP Password")]
+    public string? SmtpPass { get; set; }
+
+    [Required, MaxLength(250), EmailAddress]
+    [Display(Name = "From Address")]
+    public string FromAddress { get; set; } = "noreply@datasyncmanager.local";
+
+    [MaxLength(150)]
+    [Display(Name = "From Name")]
+    public string FromName { get; set; } = "DataSync Manager";
+
+    [Display(Name = "Use STARTTLS")]
+    public bool UseSsl { get; set; } = true;
+
+    // Test email helper
+    [EmailAddress]
+    public string? TestEmailAddress { get; set; }
+
+    // Display-only metadata
+    public bool HasExistingPassword { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public string? UpdatedByDisplayName { get; set; }
+}

@@ -18,6 +18,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<JobRun> JobRuns => Set<JobRun>();
     public DbSet<JobRunLog> JobRunLogs => Set<JobRunLog>();
 
+    public DbSet<EmailSettings> EmailSettings => Set<EmailSettings>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -110,6 +112,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
             e.HasIndex(l => l.JobRunId);
             e.HasIndex(l => l.LoggedAt);
+        });
+
+        builder.Entity<EmailSettings>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever(); // singleton — we control Id = 1
         });
     }
 }

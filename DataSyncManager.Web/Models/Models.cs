@@ -286,3 +286,38 @@ public class JobRunLog
     [MaxLength(4000)]
     public string Message { get; set; } = string.Empty;
 }
+
+// Models/Models.cs  — add after the JobRunLog class
+
+// ─────────────────────────────────────────────
+// Application Settings
+// ─────────────────────────────────────────────
+
+public class EmailSettings
+{
+    public int Id { get; set; }             // Always 1 — singleton row
+
+    [MaxLength(250)]
+    public string SmtpHost { get; set; } = string.Empty;
+
+    public int SmtpPort { get; set; } = 587;
+
+    [MaxLength(250)]
+    public string? SmtpUser { get; set; }
+
+    [MaxLength(500)]
+    public string? SmtpPass { get; set; }   // Stored as-is; same trust boundary as connection strings
+
+    [Required, MaxLength(250)]
+    public string FromAddress { get; set; } = "noreply@datasyncmanager.local";
+
+    [MaxLength(150)]
+    public string FromName { get; set; } = "DataSync Manager";
+
+    public bool UseSsl { get; set; } = true;
+
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    [MaxLength(450)]
+    public string? UpdatedByUserId { get; set; }
+}

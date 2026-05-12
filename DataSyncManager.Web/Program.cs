@@ -100,6 +100,7 @@ try
     // ─── Application Services ─────────────────────────────────
     builder.Services.AddHttpClient();
     builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<IEmailSettingsService, EmailSettingsService>();
     builder.Services.AddScoped<IEmailService, EmailService>();
     builder.Services.AddScoped<ISchemaService, SchemaService>();
     builder.Services.AddScoped<IJobExecutionService, JobExecutionService>();

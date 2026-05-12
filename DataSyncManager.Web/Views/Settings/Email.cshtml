@@ -1,0 +1,164 @@
+﻿@model EmailSettingsViewModel
+@{
+    ViewData["Title"] = "Email Settings";
+}
+
+<div class="d-flex align-items-center mb-4">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-envelope-gear me-2 text-primary"></i>Email Settings</h4>
+        <small class="text-muted">SMTP configuration for job alerts and notifications</small>
+    </div>
+</div>
+
+@if (TempData["Success"] is string ok)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-2"></i>@ok
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] is string err)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>@err
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-4">
+
+    <!-- Settings form -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-3">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-server me-2"></i>SMTP Server</h6>
+            </div>
+            <div class="card-body">
+                <form asp-action="Email" method="post">
+                    <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2" role="alert"></div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-sm-8">
+                            <label asp-for="SmtpHost" class="form-label fw-semibold">Host *</label>
+                            <input asp-for="SmtpHost" class="form-control font-monospace" placeholder="smtp.example.com" />
+                            <span asp-validation-for="SmtpHost" class="text-danger small"></span>
+                        </div>
+                        <div class="col-sm-4">
+                            <label asp-for="SmtpPort" class="form-label fw-semibold">Port *</label>
+                            <input asp-for="SmtpPort" type="number" class="form-control" min="1" max="65535" />
+                            <span asp-validation-for="SmtpPort" class="text-danger small"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3 form-check form-switch">
+                        <input asp-for="UseSsl" class="form-check-input" type="checkbox" />
+                        <label asp-for="UseSsl" class="form-check-label">Use STARTTLS (recommended)</label>
+                    </div>
+
+                    <hr class="my-3" />
+                    <h6 class="text-muted text-uppercase fw-bold mb-3 small">Authentication</h6>
+
+                    <div class="mb-3">
+                        <label asp-for="SmtpUser" class="form-label fw-semibold">Username</label>
+                        <input asp-for="SmtpUser" class="form-control" placeholder="noreply@example.com" autocomplete="off" />
+                        <small class="text-muted">Leave blank if the SMTP server does not require authentication.</small>
+                        <span asp-validation-for="SmtpUser" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-4">
+                        <label asp-for="SmtpPass" class="form-label fw-semibold">Password</label>
+                        <input asp-for="SmtpPass" type="password" class="form-control"
+                               placeholder="@(Model.HasExistingPassword ? "Leave blank to keep existing password" : "Enter SMTP password")"
+                               autocomplete="new-password" />
+                        @if (Model.HasExistingPassword)
+                        {
+                            <small class="text-muted"><i class="bi bi-lock-fill me-1"></i>A password is already stored. Leave blank to keep it unchanged.</small>
+                        }
+                        <span asp-validation-for="SmtpPass" class="text-danger small"></span>
+                    </div>
+
+                    <hr class="my-3" />
+                    <h6 class="text-muted text-uppercase fw-bold mb-3 small">Sender</h6>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-sm-7">
+                            <label asp-for="FromAddress" class="form-label fw-semibold">From Address *</label>
+                            <input asp-for="FromAddress" class="form-control font-monospace" placeholder="noreply@example.com" />
+                            <span asp-validation-for="FromAddress" class="text-danger small"></span>
+                        </div>
+                        <div class="col-sm-5">
+                            <label asp-for="FromName" class="form-label fw-semibold">From Name</label>
+                            <input asp-for="FromName" class="form-control" placeholder="DataSync Manager" />
+                            <span asp-validation-for="FromName" class="text-danger small"></span>
+                        </div>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-3">
+                        <button type="submit" class="btn btn-primary px-4">
+                            <i class="bi bi-save me-1"></i>Save Settings
+                        </button>
+                        @if (Model.UpdatedAt.HasValue)
+                        {
+                            <small class="text-muted">
+                                Last saved @Model.UpdatedAt.Value.ToString("dd MMM yyyy HH:mm") UTC
+                                @if (Model.UpdatedByDisplayName is not null)
+                                {
+                                    <span>by @Model.UpdatedByDisplayName</span>
+                                }
+                            </small>
+                        }
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test email panel -->
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-3">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-send-check me-2"></i>Send Test Email</h6>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">
+                    Verify your settings by sending a test message. Save your settings first, then send a test.
+                </p>
+                <form asp-action="TestEmail" method="post">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Recipient Address</label>
+                        <input name="testEmailAddress" type="email" class="form-control"
+                               placeholder="you@example.com" value="@Model.TestEmailAddress" />
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary">
+                        <i class="bi bi-envelope-arrow-up me-1"></i>Send Test
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header py-3">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-info-circle me-2"></i>Quick Reference</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless mb-0 small">
+                    <thead class="text-muted"><tr><th>Provider</th><th>Host</th><th>Port</th></tr></thead>
+                    <tbody>
+                        <tr><td>Office 365</td><td class="font-monospace">smtp.office365.com</td><td>587</td></tr>
+                        <tr><td>Gmail</td><td class="font-monospace">smtp.gmail.com</td><td>587</td></tr>
+                        <tr><td>SendGrid</td><td class="font-monospace">smtp.sendgrid.net</td><td>587</td></tr>
+                        <tr><td>Mailgun</td><td class="font-monospace">smtp.mailgun.org</td><td>587</td></tr>
+                    </tbody>
+                </table>
+                <p class="text-muted small mt-2 mb-0">Port 587 + STARTTLS is the modern standard.</p>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}
