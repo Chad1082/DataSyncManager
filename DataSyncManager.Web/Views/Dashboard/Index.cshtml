@@ -1,0 +1,168 @@
+@model DataSyncManager.Web.ViewModels.DashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0"><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h1>
+    <small class="text-muted">Last 30 days</small>
+</div>
+
+<!-- Stat Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-primary bg-opacity-10 p-3"><i class="bi bi-folder2-open fs-4 text-primary"></i></div>
+                <div>
+                    <div class="fs-2 fw-bold">@Model.TotalProjects</div>
+                    <div class="text-muted small">Active Projects</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-info bg-opacity-10 p-3"><i class="bi bi-briefcase fs-4 text-info"></i></div>
+                <div>
+                    <div class="fs-2 fw-bold">@Model.TotalJobs</div>
+                    <div class="text-muted small">Active Jobs</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-success bg-opacity-10 p-3"><i class="bi bi-check-circle fs-4 text-success"></i></div>
+                <div>
+                    <div class="fs-2 fw-bold">@Model.RunsSucceeded</div>
+                    <div class="text-muted small">Succeeded</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-danger bg-opacity-10 p-3"><i class="bi bi-x-circle fs-4 text-danger"></i></div>
+                <div>
+                    <div class="fs-2 fw-bold">@Model.RunsFailed</div>
+                    <div class="text-muted small">Failed</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Row 2: Chart + Upcoming -->
+<div class="row g-3 mb-4">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent fw-semibold">
+                <i class="bi bi-bar-chart-line me-1 text-primary"></i>Daily Run Activity (30 days)
+            </div>
+            <div class="card-body">
+                <canvas id="dailyChart" height="120"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent fw-semibold">
+                <i class="bi bi-clock me-1 text-primary"></i>Upcoming Scheduled
+            </div>
+            <div class="card-body p-0">
+                @if (!Model.UpcomingProjects.Any())
+                {
+                    <p class="text-muted p-3 mb-0">No scheduled projects.</p>
+                }
+                else
+                {
+                    <ul class="list-group list-group-flush">
+                    @foreach (var up in Model.UpcomingProjects)
+                    {
+                        <li class="list-group-item">
+                            <a asp-controller="Projects" asp-action="Details" asp-route-id="@up.ProjectId" class="fw-semibold text-decoration-none">@up.ProjectName</a>
+                            <br/>
+                            <small class="text-muted">
+                                @(up.ScheduledTime.HasValue ? up.ScheduledTime.Value.ToString(@"hh\:mm") : up.CronExpression ?? "—")
+                            </small>
+                        </li>
+                    }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Runs -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-semibold">
+        <i class="bi bi-journal-check me-1 text-primary"></i>Recent Project Runs
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Project</th>
+                    <th>Status</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                    <th>Jobs</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var run in Model.RecentProjectRuns)
+                {
+                    var dur = run.CompletedAt.HasValue ? (run.CompletedAt.Value - run.StartedAt).ToString(@"hh\:mm\:ss") : "Running…";
+                    <tr>
+                        <td class="fw-semibold">@run.ProjectName</td>
+                        <td>@Html.Partial("_StatusBadge", run.Status)</td>
+                        <td><small>@run.StartedAt.ToString("yyyy-MM-dd HH:mm")</small></td>
+                        <td><small>@dur</small></td>
+                        <td><span class="badge bg-secondary">@run.JobCount jobs</span></td>
+                        <td>
+                            <a asp-controller="Logs" asp-action="ProjectRunDetails" asp-route-id="@run.RunId"
+                               class="btn btn-sm btn-outline-secondary">Details</a>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.RecentProjectRuns.Any())
+                {
+                    <tr><td colspan="6" class="text-center text-muted py-4">No runs yet.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    const labels = @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(Model.DailyStats.Select(s => s.Date.ToString("MMM dd"))));
+    const succeedData = @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(Model.DailyStats.Select(s => s.Succeeded)));
+    const failData = @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(Model.DailyStats.Select(s => s.Failed)));
+    const partialData = @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(Model.DailyStats.Select(s => s.Partial)));
+
+    new Chart(document.getElementById('dailyChart'), {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Succeeded', data: succeedData, backgroundColor: '#198754' },
+                { label: 'Partial',   data: partialData, backgroundColor: '#fd7e14' },
+                { label: 'Failed',    data: failData,    backgroundColor: '#dc3545' }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } },
+            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+    });
+</script>
+}

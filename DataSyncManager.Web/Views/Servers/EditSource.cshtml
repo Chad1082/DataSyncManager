@@ -1,0 +1,87 @@
+@model SourceServerViewModel
+@{
+    ViewData["Title"] = "Edit Source Server";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <a asp-action="Sources" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+            <div>
+                <h2 class="mb-0">Edit Source Server</h2>
+                <p class="text-muted mb-0">@Model.Name</p>
+            </div>
+        </div>
+
+        <form asp-action="EditSource" method="post">
+            <input type="hidden" asp-for="Id" />
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold"><i class="bi bi-info-circle me-2"></i>General</div>
+                <div class="card-body row g-3">
+                    <div class="col-md-7">
+                        <label asp-for="Name" class="form-label fw-semibold">Server Name <span class="text-danger">*</span></label>
+                        <input asp-for="Name" class="form-control" />
+                        <span asp-validation-for="Name" class="text-danger small"></span>
+                    </div>
+                    <div class="col-md-5">
+                        <label asp-for="SourceType" class="form-label fw-semibold">Source Type</label>
+                        <input asp-for="SourceType" class="form-control" readonly />
+                        <div class="form-text">Source type cannot be changed after creation.</div>
+                    </div>
+                </div>
+            </div>
+
+            @if (Model.SourceType != DataSyncManager.Web.Models.SourceType.RestApi)
+            {
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header fw-semibold"><i class="bi bi-server me-2"></i>Connection</div>
+                    <div class="card-body">
+                        <label asp-for="ConnectionString" class="form-label fw-semibold">Connection String <span class="text-danger">*</span></label>
+                        <textarea asp-for="ConnectionString" class="form-control font-monospace" rows="3"></textarea>
+                        <span asp-validation-for="ConnectionString" class="text-danger small"></span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header fw-semibold"><i class="bi bi-cloud me-2"></i>REST API</div>
+                    <div class="card-body row g-3">
+                        <div class="col-12">
+                            <label asp-for="BaseUrl" class="form-label fw-semibold">Base URL</label>
+                            <input asp-for="BaseUrl" class="form-control" />
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="AuthHeader" class="form-label fw-semibold">Auth Header</label>
+                            <input asp-for="AuthHeader" class="form-control" />
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold"><i class="bi bi-arrow-repeat me-2"></i>Retry Settings</div>
+                <div class="card-body row g-3">
+                    <div class="col-md-4">
+                        <label asp-for="RetryCount" class="form-label fw-semibold">Retry Attempts</label>
+                        <input asp-for="RetryCount" class="form-control" type="number" min="0" max="10" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="RetryDelaySeconds" class="form-label fw-semibold">Delay (seconds)</label>
+                        <input asp-for="RetryDelaySeconds" class="form-control" type="number" min="1" max="300" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 justify-content-end">
+                <a asp-action="Sources" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-floppy me-1"></i> Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

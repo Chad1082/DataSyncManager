@@ -1,0 +1,335 @@
+@model DataSyncManager.Web.ViewModels.JobFormViewModel
+@{
+    var isEdit = Model.Id > 0;
+    ViewData["Title"] = isEdit ? "Edit Job" : "New Job";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-1">
+            <li class="breadcrumb-item"><a asp-controller="Projects" asp-action="Index">Projects</a></li>
+            <li class="breadcrumb-item">
+                <a asp-controller="Projects" asp-action="Details" asp-route-id="@Model.ProjectId">@Model.ProjectName</a>
+            </li>
+            <li class="breadcrumb-item active">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+    <h1 class="h3 mb-0">@ViewData["Title"]</h1>
+    <small class="text-muted">Source server: <strong>@Model.ProjectSourceServer?.Name</strong> (@Model.ProjectSourceServer?.SourceType)</small>
+</div>
+
+<form asp-action="@(isEdit ? "Edit" : "Create")" asp-route-id="@(isEdit ? Model.Id : null)" method="post" id="jobForm">
+    @Html.AntiForgeryToken()
+    <input asp-for="ProjectId" type="hidden" />
+    <input asp-for="ProjectName" type="hidden" />
+    <input asp-for="SelectedFieldsJson" type="hidden" id="selectedFieldsJson" />
+
+    <div class="row g-4">
+        <!-- LEFT: Config -->
+        <div class="col-lg-7">
+
+            <!-- General -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h6 class="text-muted text-uppercase fw-bold mb-3">General</h6>
+                    <div class="mb-3">
+                        <label asp-for="Name" class="form-label fw-semibold">Job Name *</label>
+                        <input asp-for="Name" class="form-control" />
+                        <span asp-validation-for="Name" class="text-danger small"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="Description" class="form-label fw-semibold">Description</label>
+                        <textarea asp-for="Description" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-6 mb-3">
+                            <label asp-for="SortOrder" class="form-label fw-semibold">Sort Order</label>
+                            <input asp-for="SortOrder" type="number" class="form-control" min="0" />
+                        </div>
+                        <div class="col-sm-6 mb-3 d-flex align-items-end">
+                            <div class="form-check form-switch">
+                                <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                                <label asp-for="IsActive" class="form-check-label">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Source -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h6 class="text-muted text-uppercase fw-bold mb-3">Source</h6>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Source Table / Endpoint *</label>
+                        <div class="input-group">
+                            <select id="sourceTableSelect" class="form-select">
+                                <option value="">— loading tables… —</option>
+                            </select>
+                            <input asp-for="SourceTable" type="hidden" id="sourceTableHidden" />
+                            <button type="button" class="btn btn-outline-secondary" id="loadTablesBtn">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                        <span asp-validation-for="SourceTable" class="text-danger small"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Destination -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h6 class="text-muted text-uppercase fw-bold mb-3">Destination</h6>
+                    <div class="mb-3">
+                        <label asp-for="DestinationServerId" class="form-label fw-semibold">Destination Server *</label>
+                        <select asp-for="DestinationServerId" class="form-select"
+                                asp-items="@(new SelectList(Model.AvailableDestinations, "Id", "Name"))">
+                            <option value="">— select —</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="DestinationDatabase" class="form-label fw-semibold">Database *</label>
+                        <input asp-for="DestinationDatabase" class="form-control" placeholder="TargetDatabase" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Destination Table *</label>
+                        <div class="input-group">
+                            <select id="destTableSelect" class="form-select">
+                                <option value="__new__">— Create new table —</option>
+                            </select>
+                            <input asp-for="DestinationTable" type="hidden" id="destTableHidden" />
+                            <button type="button" class="btn btn-outline-secondary" id="loadDestTablesBtn">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-3 form-check form-switch">
+                        <input asp-for="CreateDestinationTableIfMissing" class="form-check-input" type="checkbox" />
+                        <label asp-for="CreateDestinationTableIfMissing" class="form-check-label">
+                            Create destination table if it doesn't exist
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sync Config -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h6 class="text-muted text-uppercase fw-bold mb-3">Sync Configuration</h6>
+                    <div class="mb-3">
+                        <label asp-for="SyncMode" class="form-label fw-semibold">Sync Mode *</label>
+                        <select asp-for="SyncMode" class="form-select" id="syncModeSelect">
+                            <option value="Upsert">Upsert (Insert / Update)</option>
+                            <option value="FullReplace">Full Replace (Truncate & Load)</option>
+                        </select>
+                    </div>
+                    <div id="upsertPanel">
+                        <div class="mb-3">
+                            <label asp-for="UniqueKeyFields" class="form-label fw-semibold">Unique Key Fields</label>
+                            <input asp-for="UniqueKeyFields" class="form-control font-monospace" placeholder="Id, Code" />
+                            <small class="text-muted">Comma-separated field names used to identify unique rows.</small>
+                        </div>
+                        <div class="mb-3">
+                            <label asp-for="ChangeDateField" class="form-label fw-semibold">Change Detection Date Field</label>
+                            <input asp-for="ChangeDateField" class="form-control font-monospace" placeholder="UpdatedAt" />
+                            <small class="text-muted">Field used to detect rows modified since the last run.</small>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="DaysPerBatch" class="form-label fw-semibold">Days Per Batch</label>
+                        <input asp-for="DaysPerBatch" type="number" step="0.25" min="0.04" max="31" class="form-control" />
+                        <small class="text-muted">How many days of data to retrieve per run. Use 0.25 for 6 hours, up to 31 for monthly.</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body">
+                    <h6 class="text-muted text-uppercase fw-bold mb-3">Email Alerts</h6>
+                    <div class="mb-3">
+                        <label asp-for="JobAlertOn" class="form-label fw-semibold">Send alert when</label>
+                        <select asp-for="JobAlertOn" class="form-select">
+                            <option value="0">Never</option>
+                            <option value="1">Succeeded only</option>
+                            <option value="2">Failed only</option>
+                            <option value="4">Errors / partial only</option>
+                            <option value="7">Always</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label asp-for="AlertEmailAddresses" class="form-label fw-semibold">Email Addresses</label>
+                        <input asp-for="AlertEmailAddresses" class="form-control" placeholder="user@example.com, other@example.com" />
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- RIGHT: Field Picker -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm sticky-top" style="top:70px;">
+                <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-columns me-1 text-primary"></i>Fields</span>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-secondary" id="selectAllBtn">All</button>
+                        <button type="button" class="btn btn-outline-secondary" id="deselectAllBtn">None</button>
+                    </div>
+                </div>
+                <div class="card-body p-0" style="max-height:60vh; overflow-y:auto;" id="fieldsPanel">
+                    <div class="text-center text-muted py-5" id="fieldsPlaceholder">
+                        <i class="bi bi-table fs-3 d-block mb-2"></i>
+                        Select a source table to load fields
+                    </div>
+                    <div class="list-group list-group-flush" id="fieldsList"></div>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <small class="text-muted" id="fieldCount">0 fields selected</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-lg" id="saveBtn">
+            <i class="bi bi-save me-1"></i>Save Job
+        </button>
+        <a asp-controller="Projects" asp-action="Details" asp-route-id="@Model.ProjectId"
+           class="btn btn-outline-secondary btn-lg">Cancel</a>
+    </div>
+
+</form>
+
+@section Scripts {
+<script>
+const sourceServerId = @Model.ProjectSourceServer?.Id;
+let selectedFields = @Html.Raw(Model.SelectedFieldsJson ?? "[]");
+
+// ── Source table loading ──────────────────────────
+
+async function loadSourceTables() {
+    const r = await fetch(`/Servers/GetSourceTables?serverId=${sourceServerId}`);
+    const tables = await r.json();
+    const sel = document.getElementById('sourceTableSelect');
+    sel.innerHTML = '<option value="">— Select table —</option>';
+    tables.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        if (t === '@Model.SourceTable') opt.selected = true;
+        sel.appendChild(opt);
+    });
+    if ('@Model.SourceTable') loadSourceColumns('@Model.SourceTable');
+}
+
+async function loadSourceColumns(tableName) {
+    document.getElementById('fieldsPlaceholder').style.display = '';
+    document.getElementById('fieldsList').innerHTML = '';
+    const r = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(tableName)}`);
+    const cols = await r.json();
+
+    document.getElementById('fieldsPlaceholder').style.display = 'none';
+    const list = document.getElementById('fieldsList');
+
+    cols.forEach((col, i) => {
+        const existing = selectedFields.find(f => f.sourceFieldName === col.name);
+        const checked = existing ? existing.isIncluded : true;
+
+        list.innerHTML += `
+          <label class="list-group-item list-group-item-action py-2">
+            <div class="d-flex align-items-center gap-2">
+              <input type="checkbox" class="form-check-input field-check" ${checked ? 'checked' : ''}
+                     data-name="${col.name}" data-type="${col.dataType}" data-maxlen="${col.maxLength}" data-nullable="${col.isNullable}" />
+              <div class="flex-grow-1">
+                <div class="fw-semibold small">${col.name}</div>
+                <div class="text-muted" style="font-size:.7rem;">${col.dataType}${col.maxLength > 0 ? '(' + col.maxLength + ')' : ''} ${col.isNullable ? 'NULL' : 'NOT NULL'}</div>
+              </div>
+            </div>
+          </label>`;
+    });
+
+    document.querySelectorAll('.field-check').forEach(cb =>
+        cb.addEventListener('change', updateFieldCount));
+    updateFieldCount();
+}
+
+function updateFieldCount() {
+    const total = document.querySelectorAll('.field-check').length;
+    const sel = document.querySelectorAll('.field-check:checked').length;
+    document.getElementById('fieldCount').textContent = `${sel} of ${total} fields selected`;
+}
+
+document.getElementById('sourceTableSelect').addEventListener('change', function () {
+    document.getElementById('sourceTableHidden').value = this.value;
+    if (this.value) loadSourceColumns(this.value);
+});
+
+document.getElementById('loadTablesBtn').addEventListener('click', loadSourceTables);
+document.getElementById('selectAllBtn').addEventListener('click', () => {
+    document.querySelectorAll('.field-check').forEach(c => c.checked = true);
+    updateFieldCount();
+});
+document.getElementById('deselectAllBtn').addEventListener('click', () => {
+    document.querySelectorAll('.field-check').forEach(c => c.checked = false);
+    updateFieldCount();
+});
+
+// ── Destination table loading ─────────────────────
+
+async function loadDestTables() {
+    const serverId = document.getElementById('DestinationServerId').value;
+    const database = document.getElementById('DestinationDatabase').value;
+    if (!serverId || !database) { alert('Select a destination server and enter the database name first.'); return; }
+
+    const r = await fetch(`/Servers/GetDestinationTables?serverId=${serverId}&database=${encodeURIComponent(database)}`);
+    const tables = await r.json();
+    const sel = document.getElementById('destTableSelect');
+    sel.innerHTML = '<option value="__new__">— Create new table —</option>';
+    tables.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        if (t === '@Model.DestinationTable') opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
+document.getElementById('destTableSelect').addEventListener('change', function () {
+    document.getElementById('destTableHidden').value = this.value === '__new__' ? '' : this.value;
+});
+document.getElementById('loadDestTablesBtn').addEventListener('click', loadDestTables);
+
+// ── Sync mode toggle ──────────────────────────────
+
+document.getElementById('syncModeSelect').addEventListener('change', function () {
+    document.getElementById('upsertPanel').style.display = this.value === 'Upsert' ? '' : 'none';
+});
+const initialMode = document.getElementById('syncModeSelect').value;
+document.getElementById('upsertPanel').style.display = initialMode === 'Upsert' ? '' : 'none';
+
+// ── Form submit: serialise selected fields ────────
+
+document.getElementById('jobForm').addEventListener('submit', function () {
+    const fields = [...document.querySelectorAll('.field-check')].map(cb => ({
+        sourceFieldName: cb.dataset.name,
+        destinationFieldName: cb.dataset.name,
+        dataType: cb.dataset.type,
+        maxLength: parseInt(cb.dataset.maxlen),
+        isNullable: cb.dataset.nullable === 'true',
+        isIncluded: cb.checked
+    }));
+    document.getElementById('selectedFieldsJson').value = JSON.stringify(fields.filter(f => f.isIncluded));
+
+    // Set destination table
+    const destSel = document.getElementById('destTableSelect').value;
+    if (destSel && destSel !== '__new__')
+        document.getElementById('destTableHidden').value = destSel;
+
+    // Set source table
+    document.getElementById('sourceTableHidden').value = document.getElementById('sourceTableSelect').value;
+});
+
+// ── Init ──────────────────────────────────────────
+loadSourceTables();
+</script>
+}

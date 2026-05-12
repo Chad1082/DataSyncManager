@@ -1,0 +1,265 @@
+@model JobFormViewModel
+@{
+    ViewData["Title"] = "Edit Job";
+    var isUpsert = Model.SyncMode == SyncMode.Upsert;
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <a asp-action="Details" asp-controller="Projects" asp-route-id="@Model.ProjectId"
+               class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+            <div>
+                <h2 class="mb-0">Edit Job</h2>
+                <p class="text-muted mb-0">@Model.JobName</p>
+            </div>
+        </div>
+
+        <form asp-action="Edit" method="post" id="jobForm">
+            <input type="hidden" asp-for="Id" />
+            <input type="hidden" asp-for="ProjectId" />
+            <input type="hidden" asp-for="SourceServerId" />
+            <input type="hidden" id="selectedFieldsJson" name="SelectedFieldsJson" value="@Model.SelectedFieldsJson" />
+
+            <!-- Source table (read-only on edit) -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold"><i class="bi bi-table me-2"></i>Source</div>
+                <div class="card-body row g-3">
+                    <div class="col-md-5">
+                        <label class="form-label fw-semibold">Source Table</label>
+                        <input class="form-control" value="@Model.SourceTable" readonly />
+                        <input type="hidden" asp-for="SourceTable" />
+                        <div class="form-text">Source table cannot be changed. Create a new job to use a different table.</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="JobName" class="form-label fw-semibold">Job Name <span class="text-danger">*</span></label>
+                        <input asp-for="JobName" class="form-control" />
+                        <span asp-validation-for="JobName" class="text-danger small"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Field selection -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-check me-2"></i>Fields</span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAll(true)">All</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAll(false)">None</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="loadFields()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Reload
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="fieldsLoading" class="text-center py-3 text-muted d-none">
+                        <div class="spinner-border spinner-border-sm me-2"></div>Loading fields...
+                    </div>
+                    <div id="fieldsContainer"></div>
+                    <div id="fieldsEmpty" class="text-muted text-center py-3 d-none">
+                        No fields loaded. Click Reload.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sync mode -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold"><i class="bi bi-arrow-left-right me-2"></i>Sync Mode</div>
+                <div class="card-body">
+                    <div class="d-flex gap-4 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="SyncMode" id="modeReplace"
+                                   value="FullReplace" @(!isUpsert ? "checked" : "")>
+                            <label class="form-check-label fw-semibold" for="modeReplace">Full Replace</label>
+                            <div class="text-muted small">Truncate destination then bulk insert all rows.</div>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="SyncMode" id="modeUpsert"
+                                   value="Upsert" @(isUpsert ? "checked" : "")>
+                            <label class="form-check-label fw-semibold" for="modeUpsert">Upsert</label>
+                            <div class="text-muted small">Insert new rows and update changed rows.</div>
+                        </div>
+                    </div>
+
+                    <div id="upsertPanel" class="@(!isUpsert ? "d-none" : "") border rounded p-3 bg-light">
+                        <div class="row g-3">
+                            <div class="col-md-5">
+                                <label asp-for="UniqueKeyFields" class="form-label fw-semibold">Unique Key Fields</label>
+                                <input asp-for="UniqueKeyFields" class="form-control"
+                                       placeholder="id, tenant_id" />
+                                <div class="form-text">Comma-separated field names that uniquely identify a row.</div>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="ChangeDateField" class="form-label fw-semibold">Change Date Field</label>
+                                <input asp-for="ChangeDateField" class="form-control" placeholder="updated_at" />
+                                <div class="form-text">Field used to detect changed rows.</div>
+                            </div>
+                            <div class="col-md-3">
+                                <label asp-for="DaysPerBatch" class="form-label fw-semibold">Days Per Batch</label>
+                                <input asp-for="DaysPerBatch" class="form-control" type="number"
+                                       min="0.04" max="31" step="0.01" />
+                                <div class="form-text">0.04 = ~1 hour. Max 31.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Destination -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold"><i class="bi bi-database me-2"></i>Destination</div>
+                <div class="card-body row g-3">
+                    <div class="col-md-5">
+                        <label asp-for="DestinationServerId" class="form-label fw-semibold">Destination Server</label>
+                        <select asp-for="DestinationServerId" asp-items="Model.AvailableDestinationServers"
+                                class="form-select">
+                            <option value="">-- Select Server --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <label asp-for="DestinationTable" class="form-label fw-semibold">Destination Table</label>
+                        <input asp-for="DestinationTable" class="form-control" />
+                        <div class="form-text">Table will be created or altered automatically.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold"><i class="bi bi-bell me-2"></i>Job Alerts</div>
+                <div class="card-body row g-3">
+                    <div class="col-12">
+                        <label class="form-label fw-semibold">Alert on</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="AlertOnSuccess"
+                                       id="jAlertSuccess" value="true"
+                                       @(((int)Model.AlertOn & 1) != 0 ? "checked" : "")>
+                                <label class="form-check-label" for="jAlertSuccess">Success</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="AlertOnFailure"
+                                       id="jAlertFailure" value="true"
+                                       @(((int)Model.AlertOn & 2) != 0 ? "checked" : "")>
+                                <label class="form-check-label" for="jAlertFailure">Failure</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="AlertOnError"
+                                       id="jAlertError" value="true"
+                                       @(((int)Model.AlertOn & 4) != 0 ? "checked" : "")>
+                                <label class="form-check-label" for="jAlertError">Errors</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <label asp-for="AlertEmailAddresses" class="form-label fw-semibold">Alert Email Addresses</label>
+                        <input asp-for="AlertEmailAddresses" class="form-control"
+                               placeholder="ops@example.com, team@example.com" />
+                        <div class="form-text">Comma-separated. Overrides project-level alert addresses.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 justify-content-end">
+                <a asp-action="Details" asp-controller="Projects" asp-route-id="@Model.ProjectId"
+                   class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-floppy me-1"></i> Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+    const sourceServerId = '@Model.SourceServerId';
+    const sourceTable    = '@Model.SourceTable';
+    let savedFields = [];
+
+    try {
+        const raw = document.getElementById('selectedFieldsJson').value;
+        if (raw) savedFields = JSON.parse(raw);
+    } catch(e) { savedFields = []; }
+
+    async function loadFields() {
+        document.getElementById('fieldsLoading').classList.remove('d-none');
+        document.getElementById('fieldsContainer').innerHTML = '';
+        document.getElementById('fieldsEmpty').classList.add('d-none');
+        try {
+            const resp = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(sourceTable)}`);
+            const cols = await resp.json();
+            renderFields(cols);
+        } catch(e) {
+            document.getElementById('fieldsEmpty').classList.remove('d-none');
+            document.getElementById('fieldsEmpty').textContent = 'Failed to load fields: ' + e.message;
+        } finally {
+            document.getElementById('fieldsLoading').classList.add('d-none');
+        }
+    }
+
+    function renderFields(cols) {
+        const container = document.getElementById('fieldsContainer');
+        if (!cols || !cols.length) {
+            document.getElementById('fieldsEmpty').classList.remove('d-none');
+            return;
+        }
+        const savedMap = {};
+        savedFields.forEach(f => savedMap[f.sourceFieldName] = f);
+
+        const table = document.createElement('table');
+        table.className = 'table table-sm table-hover align-middle mb-0';
+        table.innerHTML = `<thead class="table-light"><tr>
+            <th style="width:40px"></th><th>Source Field</th><th>Destination Field</th>
+            <th>Data Type</th><th>Max Length</th><th>Nullable</th></tr></thead>`;
+        const tbody = document.createElement('tbody');
+        cols.forEach(col => {
+            const saved = savedMap[col.name] || {};
+            const included = saved.isIncluded !== undefined ? saved.isIncluded : true;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="checkbox" class="form-check-input field-check"
+                    data-field="${col.name}" ${included ? 'checked' : ''}></td>
+                <td class="fw-semibold text-truncate" style="max-width:160px" title="${col.name}">${col.name}</td>
+                <td><input type="text" class="form-control form-control-sm dest-name"
+                    value="${saved.destinationFieldName || col.name}" style="min-width:120px"></td>
+                <td><span class="badge bg-light text-dark border">${col.dataType || ''}</span></td>
+                <td>${col.maxLength != null ? col.maxLength : ''}</td>
+                <td>${col.isNullable ? '<i class="bi bi-check text-success"></i>' : ''}</td>`;
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        container.appendChild(table);
+    }
+
+    function selectAll(val) {
+        document.querySelectorAll('.field-check').forEach(c => c.checked = val);
+    }
+
+    document.getElementById('jobForm').addEventListener('submit', function() {
+        const rows = document.querySelectorAll('.field-check');
+        if (!rows.length) return;
+        const fields = [];
+        rows.forEach(chk => {
+            const row = chk.closest('tr');
+            const destInput = row.querySelector('.dest-name');
+            fields.push({
+                sourceFieldName: chk.dataset.field,
+                destinationFieldName: destInput ? destInput.value : chk.dataset.field,
+                isIncluded: chk.checked
+            });
+        });
+        document.getElementById('selectedFieldsJson').value = JSON.stringify(fields);
+    });
+
+    document.querySelectorAll('input[name="SyncMode"]').forEach(r => {
+        r.addEventListener('change', function() {
+            document.getElementById('upsertPanel').classList.toggle('d-none', this.value !== 'Upsert');
+        });
+    });
+
+    // Load fields on page load
+    loadFields();
+    </script>
+}

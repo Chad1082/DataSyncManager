@@ -1,0 +1,341 @@
+using DataSyncManager.Web.Models;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using System.ComponentModel.DataAnnotations;
+
+namespace DataSyncManager.Web.ViewModels;
+
+// ─────────────────────────────────────────────
+// Account
+// ─────────────────────────────────────────────
+
+public class LoginViewModel
+{
+    [Required, EmailAddress]
+    public string Email { get; set; } = string.Empty;
+
+    [Required, DataType(DataType.Password)]
+    public string Password { get; set; } = string.Empty;
+
+    public bool RememberMe { get; set; }
+    public string? ReturnUrl { get; set; }
+}
+
+public class RegisterViewModel
+{
+    [Required, EmailAddress, Display(Name = "Email")]
+    public string Email { get; set; } = string.Empty;
+
+    [Required, Display(Name = "Display Name")]
+    public string DisplayName { get; set; } = string.Empty;
+
+    [Required]
+    public string Role { get; set; } = "Viewer";
+
+    [Required, DataType(DataType.Password), MinLength(8)]
+    public string Password { get; set; } = string.Empty;
+
+    [DataType(DataType.Password), Compare(nameof(Password))]
+    public string ConfirmPassword { get; set; } = string.Empty;
+}
+
+public class UserListViewModel
+{
+    public string Id { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string? DisplayName { get; set; }
+    public bool IsActive { get; set; }
+    public string Role { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+
+// ─────────────────────────────────────────────
+// Dashboard
+// ─────────────────────────────────────────────
+
+public class DashboardViewModel
+{
+    public int TotalProjects { get; set; }
+    public int TotalJobs { get; set; }
+    public int TotalSources { get; set; }
+    public int TotalDestinations { get; set; }
+
+    // Last 30 days
+    public int RunsSucceeded { get; set; }
+    public int RunsFailed { get; set; }
+    public int RunsPartial { get; set; }
+    public long TotalRowsSynced { get; set; }
+
+    public List<RecentRunItem> RecentProjectRuns { get; set; } = new();
+    public List<UpcomingProjectItem> UpcomingProjects { get; set; } = new();
+    public List<DailyRunStat> DailyStats { get; set; } = new();
+}
+
+public class RecentRunItem
+{
+    public long RunId { get; set; }
+    public string ProjectName { get; set; } = string.Empty;
+    public RunStatus Status { get; set; }
+    public DateTime StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int JobCount { get; set; }
+}
+
+public class UpcomingProjectItem
+{
+    public int ProjectId { get; set; }
+    public string ProjectName { get; set; } = string.Empty;
+    public TimeSpan? ScheduledTime { get; set; }
+    public string? CronExpression { get; set; }
+}
+
+public class DailyRunStat
+{
+    public DateTime Date { get; set; }
+    public int Succeeded { get; set; }
+    public int Failed { get; set; }
+    public int Partial { get; set; }
+}
+
+// ─────────────────────────────────────────────
+// Servers
+// ─────────────────────────────────────────────
+
+public class SourceServerViewModel
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(150)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required]
+    public SourceType SourceType { get; set; }
+
+    [MaxLength(500)]
+    public string? ConnectionString { get; set; }
+
+    [MaxLength(500)]
+    public string? BaseUrl { get; set; }
+
+    [MaxLength(500)]
+    public string? AuthHeader { get; set; }
+
+    [MaxLength(200)]
+    public string? DefaultDatabase { get; set; }
+
+    [Range(1, 10)]
+    public int RetryCount { get; set; } = 3;
+
+    [Range(5, 300)]
+    public int RetryDelaySeconds { get; set; } = 30;
+
+    public bool IsActive { get; set; } = true;
+}
+
+public class DestinationServerViewModel
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(150)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required, MaxLength(500)]
+    public string ConnectionString { get; set; } = string.Empty;
+
+    [MaxLength(200)]
+    public string? DefaultDatabase { get; set; }
+
+    [Range(1, 10)]
+    public int RetryCount { get; set; } = 3;
+
+    [Range(5, 300)]
+    public int RetryDelaySeconds { get; set; } = 30;
+
+    public bool IsActive { get; set; } = true;
+}
+
+// ─────────────────────────────────────────────
+// Projects
+// ─────────────────────────────────────────────
+
+public class ProjectFormViewModel
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(1000)]
+    public string? Description { get; set; }
+
+    [Required]
+    public int SourceServerId { get; set; }
+
+    public TimeSpan? ScheduledStartTime { get; set; }
+
+    [Display(Name = "Cron Expression")]
+    public string? CronExpression { get; set; }
+
+    public bool IsScheduled { get; set; }
+    public bool IsActive { get; set; } = true;
+
+    public AlertOn ProjectAlertOn { get; set; } = AlertOn.None;
+
+    [MaxLength(2000), Display(Name = "Alert Email Addresses (comma-separated)")]
+    public string? AlertEmailAddresses { get; set; }
+
+    // For dropdowns
+    public List<SourceServer> AvailableSourceServers { get; set; } = new();
+    public List<SelectListItem> SourceServerSelectList =>
+        AvailableSourceServers.Select(s => new SelectListItem(s.Name, s.Id.ToString())).ToList();
+
+    // Convenience alias for AlertOn
+    public AlertOn AlertOn => ProjectAlertOn;
+}
+
+public class ProjectDetailsViewModel
+{
+    public Project Project { get; set; } = null!;
+    public List<JobSummaryItem> Jobs { get; set; } = new();
+    public List<ProjectRun> RecentRuns { get; set; } = new();
+    public ProjectRun? LastRun { get; set; }
+}
+
+public class JobSummaryItem
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string SourceTable { get; set; } = string.Empty;
+    public string DestinationTable { get; set; } = string.Empty;
+    public SyncMode SyncMode { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; }
+    public RunStatus? LastStatus { get; set; }
+    public DateTime? LastRun { get; set; }
+}
+
+// ─────────────────────────────────────────────
+// Jobs
+// ─────────────────────────────────────────────
+
+public class JobFormViewModel
+{
+    public int Id { get; set; }
+
+    [Required]
+    public int ProjectId { get; set; }
+
+    public string ProjectName { get; set; } = string.Empty;
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(1000)]
+    public string? Description { get; set; }
+
+    // Source
+    [Required]
+    public string SourceTable { get; set; } = string.Empty;
+
+    // Destination
+    [Required]
+    public int DestinationServerId { get; set; }
+
+    [Required]
+    public string DestinationDatabase { get; set; } = string.Empty;
+
+    [Required]
+    public string DestinationTable { get; set; } = string.Empty;
+
+    public bool CreateDestinationTableIfMissing { get; set; } = true;
+
+    // Sync
+    public SyncMode SyncMode { get; set; } = SyncMode.Upsert;
+
+    public string? UniqueKeyFields { get; set; }
+
+    public string? ChangeDateField { get; set; }
+
+    [Range(0.04, 31)]
+    public decimal DaysPerBatch { get; set; } = 1;
+
+    // Alerts
+    public AlertOn JobAlertOn { get; set; } = AlertOn.None;
+    // Convenience alias used in views
+    public AlertOn AlertOn => JobAlertOn;
+
+    [MaxLength(2000)]
+    public string? AlertEmailAddresses { get; set; }
+
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+
+    // Field selection (posted as JSON)
+    public string SelectedFieldsJson { get; set; } = "[]";
+
+    // For dropdowns / UI
+    public List<DestinationServer> AvailableDestinations { get; set; } = new();
+    public List<SelectListItem> AvailableDestinationServers =>
+        AvailableDestinations.Select(d => new SelectListItem(d.Name, d.Id.ToString())).ToList();
+    public SourceServer? ProjectSourceServer { get; set; }
+
+    // Convenience: source server id for Edit view JS
+    public int SourceServerId => ProjectSourceServer?.Id ?? 0;
+
+    // Convenience alias: Job name = Name
+    public string JobName
+    {
+        get => Name;
+        set => Name = value;
+    }
+}
+
+// ─────────────────────────────────────────────
+// Logs
+// ─────────────────────────────────────────────
+
+public class LogsFilterViewModel
+{
+    public int? ProjectId { get; set; }
+    public int? JobId { get; set; }
+    public RunStatus? Status { get; set; }
+    public DateTime? From { get; set; }
+    public DateTime? To { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 50;
+
+    public List<Project> Projects { get; set; } = new();
+    public List<Job> Jobs { get; set; } = new();
+}
+
+public class LogsViewModel
+{
+    public LogsFilterViewModel Filter { get; set; } = new();
+    public List<ProjectRunSummary> ProjectRuns { get; set; } = new();
+    public int TotalCount { get; set; }
+}
+
+public class ProjectRunSummary
+{
+    public long RunId { get; set; }
+    public string ProjectName { get; set; } = string.Empty;
+    public RunStatus Status { get; set; }
+    public DateTime StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public int JobCount { get; set; }
+    public int FailedJobCount { get; set; }
+    public long TotalRowsRead { get; set; }
+    public long TotalRowsInserted { get; set; }
+    public long TotalRowsUpdated { get; set; }
+}
+
+public class ChangePasswordViewModel
+{
+    [Required, DataType(DataType.Password), Display(Name = "Current Password")]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [Required, DataType(DataType.Password), MinLength(8), Display(Name = "New Password")]
+    public string NewPassword { get; set; } = string.Empty;
+
+    [DataType(DataType.Password), Compare(nameof(NewPassword)), Display(Name = "Confirm New Password")]
+    public string ConfirmNewPassword { get; set; } = string.Empty;
+}

@@ -1,0 +1,188 @@
+@model DataSyncManager.Web.ViewModels.ProjectDetailsViewModel
+@{
+    ViewData["Title"] = Model.Project.Name;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<!-- Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1">
+                <li class="breadcrumb-item"><a asp-controller="Projects" asp-action="Index">Projects</a></li>
+                <li class="breadcrumb-item active">@Model.Project.Name</li>
+            </ol>
+        </nav>
+        <h1 class="h3 mb-0">@Model.Project.Name</h1>
+        <small class="text-muted">Source: @Model.Project.SourceServer.Name (@Model.Project.SourceServer.SourceType)</small>
+    </div>
+    <div class="d-flex gap-2">
+        @if (User.IsInRole("Admin"))
+        {
+            <a asp-controller="Jobs" asp-action="Create" asp-route-projectId="@Model.Project.Id" class="btn btn-outline-primary">
+                <i class="bi bi-plus-lg me-1"></i>Add Job
+            </a>
+            <form asp-action="RunNow" asp-route-id="@Model.Project.Id" method="post">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-success"><i class="bi bi-play-fill me-1"></i>Run Now</button>
+            </form>
+            <a asp-action="Edit" asp-route-id="@Model.Project.Id" class="btn btn-outline-secondary">
+                <i class="bi bi-pencil me-1"></i>Edit
+            </a>
+        }
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-3">
+        <div class="card border-0 bg-light text-center py-3">
+            <div class="fs-3 fw-bold">@Model.Jobs.Count(j => j.IsActive)</div>
+            <div class="text-muted small">Active Jobs</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card border-0 bg-light text-center py-3">
+            <div class="fs-3 fw-bold text-success">@Model.RecentRuns.Count(r => r.Status == DataSyncManager.Web.Models.RunStatus.Succeeded)</div>
+            <div class="text-muted small">Succeeded (last 10)</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card border-0 bg-light text-center py-3">
+            <div class="fs-3 fw-bold text-danger">@Model.RecentRuns.Count(r => r.Status == DataSyncManager.Web.Models.RunStatus.Failed)</div>
+            <div class="text-muted small">Failed (last 10)</div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card border-0 bg-light text-center py-3">
+            <div class="fs-3 fw-bold">@(Model.LastRun != null ? @Html.Partial("_StatusBadge", Model.LastRun.Status) : Html.Raw("<span class='text-muted'>—</span>"))</div>
+            <div class="text-muted small">Last Run Status</div>
+        </div>
+    </div>
+</div>
+
+<!-- Jobs List -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-briefcase me-1 text-primary"></i>Jobs
+            @if (User.IsInRole("Admin"))
+            {
+                <small class="text-muted ms-2">(drag to reorder)</small>
+            }
+        </span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    @if (User.IsInRole("Admin")) { <th style="width:40px;"></th> }
+                    <th>#</th>
+                    <th>Job Name</th>
+                    <th>Source Table</th>
+                    <th>Destination</th>
+                    <th>Mode</th>
+                    <th>Last Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="jobsTableBody">
+            @foreach (var job in Model.Jobs.OrderBy(j => j.SortOrder))
+            {
+                <tr data-job-id="@job.Id">
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <td class="text-muted drag-handle" style="cursor:grab;"><i class="bi bi-grip-vertical"></i></td>
+                    }
+                    <td class="text-muted">@(job.SortOrder + 1)</td>
+                    <td>
+                        <strong>@job.Name</strong>
+                        @if (!job.IsActive) { <span class="badge bg-secondary ms-1">Inactive</span> }
+                    </td>
+                    <td><code class="small">@job.SourceTable</code></td>
+                    <td><code class="small">@job.DestinationTable</code></td>
+                    <td><span class="badge bg-light text-dark border">@job.SyncMode</span></td>
+                    <td>
+                        @if (job.LastStatus.HasValue)
+                        {
+                            @Html.Partial("_StatusBadge", job.LastStatus.Value)
+                        }
+                        else { <span class="text-muted">—</span> }
+                    </td>
+                    <td>
+                        @if (User.IsInRole("Admin") || User.IsInRole("ReadOnly"))
+                        {
+                            <a asp-controller="Jobs" asp-action="Edit" asp-route-id="@job.Id" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                        }
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <form asp-controller="Jobs" asp-action="Delete" asp-route-id="@job.Id" method="post" class="d-inline"
+                                  onsubmit="return confirm('Deactivate job @job.Name?')">
+                                @Html.AntiForgeryToken()
+                                <button class="btn btn-sm btn-outline-danger ms-1"><i class="bi bi-trash"></i></button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Recent Runs -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent fw-semibold">
+        <i class="bi bi-journal-text me-1 text-primary"></i>Recent Runs
+        <a asp-controller="Logs" asp-action="Index" asp-route-ProjectId="@Model.Project.Id" class="btn btn-sm btn-outline-secondary ms-2">View All</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr><th>Status</th><th>Started</th><th>Completed</th><th>Duration</th><th>Jobs</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var run in Model.RecentRuns)
+            {
+                var dur = run.CompletedAt.HasValue ? (run.CompletedAt.Value - run.StartedAt).ToString(@"hh\:mm\:ss") : "—";
+                <tr>
+                    <td>@Html.Partial("_StatusBadge", run.Status)</td>
+                    <td><small>@run.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</small></td>
+                    <td><small>@(run.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</small></td>
+                    <td><small>@dur</small></td>
+                    <td><span class="badge bg-secondary">@run.JobRuns.Count</span></td>
+                    <td>
+                        <a asp-controller="Logs" asp-action="ProjectRunDetails" asp-route-id="@run.Id"
+                           class="btn btn-sm btn-outline-secondary">Details</a>
+                    </td>
+                </tr>
+            }
+            @if (!Model.RecentRuns.Any())
+            {
+                <tr><td colspan="6" class="text-center text-muted py-3">No runs yet.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+@if (User.IsInRole("Admin"))
+{
+    <script>
+    const sortable = new Sortable(document.getElementById('jobsTableBody'), {
+        handle: '.drag-handle',
+        animation: 150,
+        onEnd: async () => {
+            const ids = [...document.querySelectorAll('#jobsTableBody tr')].map(r => parseInt(r.dataset.jobId));
+            await fetch('/Projects/ReorderJobs/@Model.Project.Id', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': document.querySelector('input[name=__RequestVerificationToken]')?.value ?? '' },
+                body: JSON.stringify(ids)
+            });
+        }
+    });
+    </script>
+}
+}

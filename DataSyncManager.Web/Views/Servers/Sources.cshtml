@@ -1,0 +1,130 @@
+@model IEnumerable<SourceServerViewModel>
+@{
+    ViewData["Title"] = "Source Servers";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-0"><i class="bi bi-database-up me-2 text-primary"></i>Source Servers</h2>
+        <p class="text-muted mb-0">Configure data source connections</p>
+    </div>
+    @if (User.IsInRole("Admin"))
+    {
+        <a asp-action="CreateSource" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i> Add Source
+        </a>
+    }
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show">
+        <i class="bi bi-check-circle me-2"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger alert-dismissible fade show">
+        <i class="bi bi-exclamation-triangle me-2"></i>@TempData["Error"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-3">
+    @foreach (var src in Model)
+    {
+        var iconClass = src.SourceType switch
+        {
+            DataSyncManager.Web.Models.SourceType.SqlServer => "bi-server text-info",
+            DataSyncManager.Web.Models.SourceType.Odbc      => "bi-plug text-warning",
+            DataSyncManager.Web.Models.SourceType.RestApi   => "bi-cloud-arrow-down text-success",
+            _                                               => "bi-database"
+        };
+        <div class="col-md-6 col-xl-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-start gap-3">
+                        <div class="rounded-3 bg-light p-2 fs-3">
+                            <i class="bi @iconClass"></i>
+                        </div>
+                        <div class="flex-grow-1 min-w-0">
+                            <h6 class="card-title mb-1 text-truncate">@src.Name</h6>
+                            <span class="badge bg-secondary mb-2">@src.SourceType</span>
+                            <p class="text-muted small mb-1">
+                                <i class="bi bi-arrow-repeat me-1"></i>
+                                Retry <strong>@src.RetryCount</strong>×
+                                with <strong>@src.RetryDelaySeconds</strong>s delay
+                            </p>
+                            @if (!string.IsNullOrEmpty(src.BaseUrl))
+                            {
+                                <p class="text-muted small mb-0 text-truncate">
+                                    <i class="bi bi-link-45deg me-1"></i>@src.BaseUrl
+                                </p>
+                            }
+                        </div>
+                    </div>
+                </div>
+                @if (User.IsInRole("Admin"))
+                {
+                    <div class="card-footer bg-transparent d-flex flex-column gap-2">
+                        <div id="testResult_@src.Id" class="small"></div>
+                        <div class="d-flex gap-2 justify-content-end">
+                            <button type="button" class="btn btn-sm btn-outline-info"
+                                    onclick="testConn('/Servers/TestSource/@src.Id', 'testResult_@src.Id')">
+                                <i class="bi bi-wifi me-1"></i>Test
+                            </button>
+                            <a asp-action="EditSource" asp-route-id="@src.Id"
+                               class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-pencil me-1"></i>Edit
+                            </a>
+                            <form asp-action="DeleteSource" asp-route-id="@src.Id" method="post"
+                                  onsubmit="return confirm('Delete this source server? Projects using it will be affected.')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    @if (!Model.Any())
+    {
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5 text-muted">
+                    <i class="bi bi-database-up display-5 d-block mb-3 text-primary opacity-50"></i>
+                    <h5>No source servers configured</h5>
+                    <p class="mb-3">Add a source server to start creating sync jobs.</p>
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <a asp-action="CreateSource" class="btn btn-primary">
+                            <i class="bi bi-plus-lg me-1"></i> Add First Source
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+function testConn(url, resultId) {
+    const el = document.getElementById(resultId);
+    el.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing...';
+    el.className = 'small text-muted';
+    fetch(url)
+        .then(r => r.json())
+        .then(d => {
+            el.innerHTML = d.ok
+                ? '<i class="bi bi-check-circle-fill me-1"></i>' + (d.message || 'Connected')
+                : '<i class="bi bi-x-circle-fill me-1"></i>' + (d.message || 'Failed');
+            el.className = 'small fw-semibold ' + (d.ok ? 'text-success' : 'text-danger');
+        })
+        .catch(e => { el.innerHTML = '<i class="bi bi-x-circle-fill me-1"></i>' + e.message; el.className='small text-danger'; });
+}
+</script>
+}

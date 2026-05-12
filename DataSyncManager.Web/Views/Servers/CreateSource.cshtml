@@ -1,0 +1,235 @@
+@model SourceServerViewModel
+@{
+    ViewData["Title"] = "Add Source Server";
+    bool isEdit = Model.Id > 0;
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <a asp-action="Sources" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i>
+            </a>
+            <div>
+                <h2 class="mb-0">@(isEdit ? "Edit Source Server" : "Add Source Server")</h2>
+                <p class="text-muted mb-0">Configure a data source connection</p>
+            </div>
+        </div>
+
+        <form asp-action="@(isEdit ? "EditSource" : "CreateSource")" method="post" id="sourceForm">
+            @if (isEdit) { <input type="hidden" asp-for="Id" /> }
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-info-circle me-2"></i>General
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-7">
+                            <label asp-for="Name" class="form-label fw-semibold">Server Name <span class="text-danger">*</span></label>
+                            <input asp-for="Name" class="form-control" placeholder="e.g. Production ODBC Source" />
+                            <span asp-validation-for="Name" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-5">
+                            <label asp-for="SourceType" class="form-label fw-semibold">Source Type <span class="text-danger">*</span></label>
+                            <select asp-for="SourceType" class="form-select" id="sourceTypeSelect">
+                                <option value="SqlServer">SQL Server</option>
+                                <option value="Odbc">ODBC</option>
+                                <option value="RestApi">REST API</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SQL Server / ODBC panel -->
+            <div class="card shadow-sm mb-4" id="connStringPanel">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-server me-2"></i>Connection
+                </div>
+                <div class="card-body">
+                    <div id="dsnPickerPanel" class="d-none mb-3">
+                        <label class="form-label fw-semibold">Available ODBC Data Sources</label>
+                        <div id="dsnLoading" class="text-muted small d-none">
+                            <span class="spinner-border spinner-border-sm me-1"></span>Loading DSNs from server...
+                        </div>
+                        <div id="dsnError" class="text-danger small d-none"></div>
+                        <div class="row g-2" id="dsnBuilderRow">
+                            <div class="col-md-5">
+                                <select id="dsnSelect" class="form-select form-select-sm">
+                                    <option value="">-- Select a DSN --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="text" id="dsnUid" class="form-control form-control-sm"
+                                       placeholder="Username (optional)" />
+                            </div>
+                            <div class="col-md-3">
+                                <input type="password" id="dsnPwd" class="form-control form-control-sm"
+                                       placeholder="Password (optional)" />
+                            </div>
+                            <div class="col-md-1">
+                                <button type="button" class="btn btn-sm btn-outline-primary w-100"
+                                        onclick="buildConnString()" title="Build connection string">
+                                    <i class="bi bi-arrow-down"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-text mt-1">
+                            Select a DSN and click <i class="bi bi-arrow-down"></i> to populate the connection string below.
+                            Leave Username/Password blank for trusted connections.
+                        </div>
+                    </div>
+                    <label asp-for="ConnectionString" class="form-label fw-semibold">Connection String <span class="text-danger">*</span></label>
+                    <textarea asp-for="ConnectionString" id="connStringInput" class="form-control font-monospace" rows="3"
+                              placeholder="Server=.;Database=MyDb;Trusted_Connection=True;TrustServerCertificate=True;"></textarea>
+                    <span asp-validation-for="ConnectionString" class="text-danger small"></span>
+                    <div id="connStringHint" class="form-text"></div>
+                </div>
+            </div>
+
+            <!-- REST API panel -->
+            <div class="card shadow-sm mb-4 d-none" id="restApiPanel">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-cloud me-2"></i>REST API
+                </div>
+                <div class="card-body row g-3">
+                    <div class="col-12">
+                        <label asp-for="BaseUrl" class="form-label fw-semibold">Base URL <span class="text-danger">*</span></label>
+                        <input asp-for="BaseUrl" class="form-control" placeholder="https://api.example.com/v1" />
+                        <span asp-validation-for="BaseUrl" class="text-danger small"></span>
+                    </div>
+                    <div class="col-12">
+                        <label asp-for="AuthHeader" class="form-label fw-semibold">Auth Header</label>
+                        <input asp-for="AuthHeader" class="form-control" placeholder="Bearer eyJhbGci..." />
+                        <div class="form-text">Value for the <code>Authorization</code> header. Leave blank for anonymous APIs.</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="alert alert-info mb-0 py-2 small">
+                            <i class="bi bi-info-circle me-1"></i>
+                            The API must expose <code>/meta/tables</code>, <code>/meta/tables/{name}/columns</code>,
+                            and <code>/meta/ping</code> endpoints for schema discovery.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-arrow-repeat me-2"></i>Retry Settings
+                </div>
+                <div class="card-body row g-3">
+                    <div class="col-md-4">
+                        <label asp-for="RetryCount" class="form-label fw-semibold">Retry Attempts</label>
+                        <input asp-for="RetryCount" class="form-control" type="number" min="0" max="10" />
+                        <span asp-validation-for="RetryCount" class="text-danger small"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="RetryDelaySeconds" class="form-label fw-semibold">Delay (seconds)</label>
+                        <input asp-for="RetryDelaySeconds" class="form-control" type="number" min="1" max="300" />
+                        <span asp-validation-for="RetryDelaySeconds" class="text-danger small"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 justify-content-end">
+                <a asp-action="Sources" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-floppy me-1"></i> @(isEdit ? "Save Changes" : "Add Source")
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+    (function () {
+        const typeSelect  = document.getElementById('sourceTypeSelect');
+        const connPanel   = document.getElementById('connStringPanel');
+        const restPanel   = document.getElementById('restApiPanel');
+        const connInput   = document.getElementById('connStringInput');
+        const connHint    = document.getElementById('connStringHint');
+
+        const hints = {
+            SqlServer: {
+                placeholder: 'Server=.;Database=MyDb;Trusted_Connection=True;TrustServerCertificate=True;',
+                hint: 'Standard SQL Server connection string. Use <code>TrustServerCertificate=True</code> for self-signed certs.',
+                showDsnPicker: false
+            },
+            Odbc: {
+                placeholder: 'DSN=MyDSN;Uid=myUser;Pwd=myPass;',
+                hint: 'Select a DSN above to build the connection string, or type it manually.',
+                showDsnPicker: true
+            }
+        };
+
+        async function toggle() {
+            const isRest = typeSelect.value === 'RestApi';
+            connPanel.classList.toggle('d-none', isRest);
+            restPanel.classList.toggle('d-none', !isRest);
+
+            if (!isRest) {
+                const cfg = hints[typeSelect.value] || hints.SqlServer;
+                connInput.placeholder = cfg.placeholder;
+                connHint.innerHTML    = cfg.hint;
+
+                const dsnPanel = document.getElementById('dsnPickerPanel');
+                if (cfg.showDsnPicker) {
+                    dsnPanel.classList.remove('d-none');
+                    if (!dsnPanel.dataset.loaded) {
+                        await loadDsns();
+                        dsnPanel.dataset.loaded = '1';
+                    }
+                } else {
+                    dsnPanel.classList.add('d-none');
+                }
+            }
+        }
+
+        async function loadDsns() {
+            const loading = document.getElementById('dsnLoading');
+            const errEl   = document.getElementById('dsnError');
+            const select  = document.getElementById('dsnSelect');
+            loading.classList.remove('d-none');
+            errEl.classList.add('d-none');
+            try {
+                const resp = await fetch('/Servers/GetOdbcDsns');
+                const dsns = await resp.json();
+                select.innerHTML = '<option value="">-- Select a DSN --</option>';
+                if (dsns.length === 0) {
+                    select.innerHTML += '<option disabled>No DSNs found on this server</option>';
+                } else {
+                    dsns.forEach(d => {
+                        const opt = document.createElement('option');
+                        opt.value       = d.name;
+                        opt.textContent = `${d.name}  (${d.driver})`;
+                        opt.dataset.driver = d.driver;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                errEl.textContent = 'Failed to load DSNs: ' + e.message;
+                errEl.classList.remove('d-none');
+            } finally {
+                loading.classList.add('d-none');
+            }
+        }
+
+        window.buildConnString = function () {
+            const dsn = document.getElementById('dsnSelect').value;
+            if (!dsn) { alert('Please select a DSN first.'); return; }
+            const uid = document.getElementById('dsnUid').value.trim();
+            const pwd = document.getElementById('dsnPwd').value.trim();
+            let cs = `DSN=${dsn};`;
+            if (uid) cs += `Uid=${uid};`;
+            if (pwd) cs += `Pwd=${pwd};`;
+            document.getElementById('connStringInput').value = cs;
+        }
+
+        typeSelect.addEventListener('change', toggle);
+        toggle();
+    })();
+    </script>
+}

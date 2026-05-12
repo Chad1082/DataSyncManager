@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@(ViewData["Title"] != null ? ViewData["Title"] + " — " : "")DataSync Manager</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @RenderSection("Styles", required: false)
+</head>
+<body>
+
+<!-- Top Nav -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary px-3 fixed-top shadow-sm">
+    <a class="navbar-brand fw-bold" href="/">
+        <i class="bi bi-arrow-left-right me-2"></i>DataSync Manager
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMenu">
+        <ul class="navbar-nav ms-auto">
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                        <i class="bi bi-person-circle me-1"></i>@User.Identity.Name
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" asp-controller="Account" asp-action="ChangePassword">Change Password</a></li>
+                        <li><hr class="dropdown-divider"/></li>
+                        <li>
+                            <form asp-controller="Account" asp-action="Logout" method="post">
+                                @Html.AntiForgeryToken()
+                                <button class="dropdown-item text-danger" type="submit">
+                                    <i class="bi bi-box-arrow-right me-1"></i>Logout
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </li>
+            }
+        </ul>
+    </div>
+</nav>
+
+<div class="d-flex" style="padding-top:56px; min-height:100vh;">
+
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <!-- Sidebar -->
+        <nav class="sidebar bg-dark text-white d-flex flex-column" style="width:230px; min-height:calc(100vh - 56px); position:fixed; top:56px; left:0; overflow-y:auto;">
+            <ul class="nav flex-column pt-3">
+                <li class="nav-item">
+                    <a class="nav-link sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Dashboard" ? "active" : "")"
+                       asp-controller="Dashboard" asp-action="Index">
+                        <i class="bi bi-speedometer2 me-2"></i>Dashboard
+                    </a>
+                </li>
+
+                <li class="nav-section-header px-3 pt-3 pb-1 text-uppercase text-secondary small fw-bold">Data Flow</li>
+
+                <li class="nav-item">
+                    <a class="nav-link sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Projects" ? "active" : "")"
+                       asp-controller="Projects" asp-action="Index">
+                        <i class="bi bi-folder2-open me-2"></i>Projects
+                    </a>
+                </li>
+
+                <li class="nav-section-header px-3 pt-3 pb-1 text-uppercase text-secondary small fw-bold">Servers</li>
+
+                <li class="nav-item">
+                    <a class="nav-link sidebar-link @(ViewContext.RouteData.Values["action"]?.ToString() == "Sources" ? "active" : "")"
+                       asp-controller="Servers" asp-action="Sources">
+                        <i class="bi bi-database-up me-2"></i>Sources
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link sidebar-link @(ViewContext.RouteData.Values["action"]?.ToString() == "Destinations" ? "active" : "")"
+                       asp-controller="Servers" asp-action="Destinations">
+                        <i class="bi bi-database-down me-2"></i>Destinations
+                    </a>
+                </li>
+
+                <li class="nav-section-header px-3 pt-3 pb-1 text-uppercase text-secondary small fw-bold">Reporting</li>
+
+                <li class="nav-item">
+                    <a class="nav-link sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Logs" ? "active" : "")"
+                       asp-controller="Logs" asp-action="Index">
+                        <i class="bi bi-journal-text me-2"></i>Run Logs
+                    </a>
+                </li>
+
+                @if (User.IsInRole("Admin"))
+                {
+                    <li class="nav-section-header px-3 pt-3 pb-1 text-uppercase text-secondary small fw-bold">Admin</li>
+                    <li class="nav-item">
+                        <a class="nav-link sidebar-link" asp-controller="Account" asp-action="Users">
+                            <i class="bi bi-people me-2"></i>Users
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link sidebar-link" href="/hangfire" target="_blank">
+                            <i class="bi bi-gear me-2"></i>Job Queue <i class="bi bi-box-arrow-up-right ms-1 small"></i>
+                        </a>
+                    </li>
+                }
+            </ul>
+        </nav>
+    }
+
+    <!-- Main content -->
+    <main class="flex-grow-1 p-4" style="@(User.Identity?.IsAuthenticated == true ? "margin-left:230px;" : "")">
+
+        @if (TempData["Success"] is string success)
+        {
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="bi bi-check-circle me-2"></i>@success
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        }
+        @if (TempData["Error"] is string error)
+        {
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="bi bi-exclamation-triangle me-2"></i>@error
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        }
+
+        @RenderBody()
+    </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"></script>
+<script src="~/js/site.js" asp-append-version="true"></script>
+@RenderSection("Scripts", required: false)
+
+</body>
+</html>

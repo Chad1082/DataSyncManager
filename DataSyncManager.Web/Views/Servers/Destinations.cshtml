@@ -1,0 +1,110 @@
+@model IEnumerable<DestinationServerViewModel>
+@{
+    ViewData["Title"] = "Destination Servers";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-0"><i class="bi bi-database-down me-2 text-success"></i>Destination Servers</h2>
+        <p class="text-muted mb-0">SQL Server targets for synced data</p>
+    </div>
+    @if (User.IsInRole("Admin"))
+    {
+        <a asp-action="CreateDestination" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i> Add Destination
+        </a>
+    }
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show">
+        <i class="bi bi-check-circle me-2"></i>@TempData["Success"]
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-3">
+    @foreach (var dest in Model)
+    {
+        <div class="col-md-6 col-xl-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-start gap-3">
+                        <div class="rounded-3 bg-success bg-opacity-10 p-2 fs-3">
+                            <i class="bi bi-server text-success"></i>
+                        </div>
+                        <div class="flex-grow-1 min-w-0">
+                            <h6 class="card-title mb-1 text-truncate">@dest.Name</h6>
+                            <span class="badge bg-success mb-2">SQL Server</span>
+                            <p class="text-muted small mb-1">
+                                <i class="bi bi-arrow-repeat me-1"></i>
+                                Retry <strong>@dest.RetryCount</strong>×
+                                with <strong>@dest.RetryDelaySeconds</strong>s delay
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                @if (User.IsInRole("Admin"))
+                {
+                    <div class="card-footer bg-transparent d-flex flex-column gap-2">
+                        <div id="testResult_@dest.Id" class="small"></div>
+                        <div class="d-flex gap-2 justify-content-end">
+                            <button type="button" class="btn btn-sm btn-outline-info"
+                                    onclick="testConn('/Servers/TestDestination/@dest.Id', 'testResult_@dest.Id')">
+                                <i class="bi bi-wifi me-1"></i>Test
+                            </button>
+                            <a asp-action="EditDestination" asp-route-id="@dest.Id"
+                               class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-pencil me-1"></i>Edit
+                            </a>
+                            <form asp-action="DeleteDestination" asp-route-id="@dest.Id" method="post"
+                                  onsubmit="return confirm('Delete this destination server?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    @if (!Model.Any())
+    {
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5 text-muted">
+                    <i class="bi bi-database-down display-5 d-block mb-3 text-success opacity-50"></i>
+                    <h5>No destination servers configured</h5>
+                    <p class="mb-3">Add a SQL Server destination to start syncing data.</p>
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <a asp-action="CreateDestination" class="btn btn-primary">
+                            <i class="bi bi-plus-lg me-1"></i> Add First Destination
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+function testConn(url, resultId) {
+    const el = document.getElementById(resultId);
+    el.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Testing...';
+    el.className = 'small text-muted';
+    fetch(url)
+        .then(r => r.json())
+        .then(d => {
+            el.innerHTML = d.ok
+                ? '<i class="bi bi-check-circle-fill me-1"></i>' + (d.message || 'Connected')
+                : '<i class="bi bi-x-circle-fill me-1"></i>' + (d.message || 'Failed');
+            el.className = 'small fw-semibold ' + (d.ok ? 'text-success' : 'text-danger');
+        })
+        .catch(e => { el.innerHTML = e.message; el.className = 'small text-danger'; });
+}
+</script>
+}

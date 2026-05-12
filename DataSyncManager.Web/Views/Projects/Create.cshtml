@@ -1,0 +1,115 @@
+@model DataSyncManager.Web.ViewModels.ProjectFormViewModel
+@{
+    var isEdit = Model.Id > 0;
+    ViewData["Title"] = isEdit ? "Edit Project" : "New Project";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a asp-action="Index">Projects</a></li>
+            <li class="breadcrumb-item active">@ViewData["Title"]</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="card border-0 shadow-sm" style="max-width:800px;">
+    <div class="card-body p-4">
+        <h4 class="card-title mb-4">@ViewData["Title"]</h4>
+
+        <form asp-action="@(isEdit ? "Edit" : "Create")" asp-route-id="@(isEdit ? Model.Id : null)" method="post">
+            @Html.AntiForgeryToken()
+            <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2 small"></div>
+
+            <!-- Basic Info -->
+            <h6 class="text-muted text-uppercase fw-bold mb-3">General</h6>
+
+            <div class="mb-3">
+                <label asp-for="Name" class="form-label fw-semibold">Project Name *</label>
+                <input asp-for="Name" class="form-control" placeholder="My Data Sync Project" />
+                <span asp-validation-for="Name" class="text-danger small"></span>
+            </div>
+
+            <div class="mb-3">
+                <label asp-for="Description" class="form-label fw-semibold">Description</label>
+                <textarea asp-for="Description" class="form-control" rows="2"></textarea>
+            </div>
+
+            <div class="mb-4">
+                <label asp-for="SourceServerId" class="form-label fw-semibold">Source Server *</label>
+                <select asp-for="SourceServerId" class="form-select"
+                        asp-items="@(new SelectList(Model.AvailableSourceServers, "Id", "Name"))">
+                    <option value="">— Select a source server —</option>
+                </select>
+                <span asp-validation-for="SourceServerId" class="text-danger small"></span>
+                <small class="text-muted">All jobs in this project will use this source.</small>
+            </div>
+
+            <hr/>
+
+            <!-- Schedule -->
+            <h6 class="text-muted text-uppercase fw-bold mb-3">Schedule</h6>
+
+            <div class="mb-3 form-check form-switch">
+                <input asp-for="IsScheduled" class="form-check-input" type="checkbox" id="isScheduledToggle" />
+                <label class="form-check-label" for="isScheduledToggle">Enable scheduling</label>
+            </div>
+
+            <div id="schedulePanel" class="@(Model.IsScheduled ? "" : "d-none")">
+                <div class="mb-3">
+                    <label asp-for="CronExpression" class="form-label fw-semibold">Cron Expression</label>
+                    <input asp-for="CronExpression" class="form-control font-monospace" placeholder="0 2 * * *" />
+                    <small class="text-muted">
+                        Standard 5-field cron (min hour day month weekday). Examples:
+                        <code>0 2 * * *</code> = daily 2am,
+                        <code>0 */6 * * *</code> = every 6 hours.
+                        <a href="https://crontab.guru" target="_blank">crontab.guru</a>
+                    </small>
+                </div>
+            </div>
+
+            <hr/>
+
+            <!-- Alerts -->
+            <h6 class="text-muted text-uppercase fw-bold mb-3">Email Alerts</h6>
+
+            <div class="mb-3">
+                <label asp-for="ProjectAlertOn" class="form-label fw-semibold">Send alert when</label>
+                <select asp-for="ProjectAlertOn" class="form-select">
+                    <option value="0">Never</option>
+                    <option value="1">Succeeded only</option>
+                    <option value="2">Failed only</option>
+                    <option value="4">Errors / partial only</option>
+                    <option value="7">Always (all outcomes)</option>
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label asp-for="AlertEmailAddresses" class="form-label fw-semibold">Alert Email Addresses</label>
+                <input asp-for="AlertEmailAddresses" class="form-control" placeholder="user1@example.com, user2@example.com" />
+                <small class="text-muted">Comma-separated list of email recipients.</small>
+            </div>
+
+            <hr/>
+
+            <div class="mb-4 form-check form-switch">
+                <input asp-for="IsActive" class="form-check-input" type="checkbox" />
+                <label asp-for="IsActive" class="form-check-label">Active</label>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Save Project</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    document.getElementById('isScheduledToggle').addEventListener('change', function () {
+        document.getElementById('schedulePanel').classList.toggle('d-none', !this.checked);
+    });
+</script>
+}

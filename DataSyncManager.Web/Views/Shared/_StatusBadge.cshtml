@@ -1,0 +1,17 @@
+@model DataSyncManager.Web.Models.RunStatus
+
+@{
+    var (cls, icon) = Model switch
+    {
+        DataSyncManager.Web.Models.RunStatus.Succeeded     => ("success", "check-circle"),
+        DataSyncManager.Web.Models.RunStatus.Failed        => ("danger",  "x-circle"),
+        DataSyncManager.Web.Models.RunStatus.Running       => ("primary", "arrow-repeat"),
+        DataSyncManager.Web.Models.RunStatus.PartialSuccess => ("warning", "exclamation-triangle"),
+        DataSyncManager.Web.Models.RunStatus.Cancelled     => ("secondary","slash-circle"),
+        _                                                   => ("light",   "clock")
+    };
+}
+
+<span class="badge bg-@cls">
+    <i class="bi bi-@icon me-1"></i>@Model
+</span>

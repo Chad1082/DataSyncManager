@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "DataSyncManager.Web": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:56576;http://localhost:56577"
+    }
+  }
+}
