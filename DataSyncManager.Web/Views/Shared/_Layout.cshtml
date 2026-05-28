@@ -102,9 +102,15 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link sidebar-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Settings" ? "active" : "")"
+                        <a class="nav-link sidebar-link @(ViewContext.RouteData.Values["action"]?.ToString() == "Email" && ViewContext.RouteData.Values["controller"]?.ToString() == "Settings" ? "active" : "")"
                                 asp-controller="Settings" asp-action="Email">
                             <i class="bi bi-envelope-gear me-2"></i>Email Settings
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link sidebar-link @(ViewContext.RouteData.Values["action"]?.ToString() == "EmailTemplate" ? "active" : "")"
+                                asp-controller="Settings" asp-action="EmailTemplate">
+                            <i class="bi bi-file-earmark-code me-2"></i>Email Template
                         </a>
                     </li>
                     <li class="nav-item">

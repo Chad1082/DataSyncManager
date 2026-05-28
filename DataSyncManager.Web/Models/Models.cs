@@ -321,3 +321,19 @@ public class EmailSettings
     [MaxLength(450)]
     public string? UpdatedByUserId { get; set; }
 }
+
+public class EmailTemplate
+{
+    public int Id { get; set; }  // Always 1 — singleton row
+
+    [Column(TypeName = "nvarchar(max)")]
+    public string HtmlTemplate { get; set; } = string.Empty;
+
+    [MaxLength(500)]
+    public string? SiteBaseUrl { get; set; }
+
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    [MaxLength(450)]
+    public string? UpdatedByUserId { get; set; }
+}

@@ -340,6 +340,15 @@ public class ChangePasswordViewModel
     public string ConfirmNewPassword { get; set; } = string.Empty;
 }
 
+public class EmailTemplateViewModel
+{
+    [Required]
+    public string HtmlTemplate { get; set; } = string.Empty;
+
+    public DateTime? UpdatedAt { get; set; }
+    public string? UpdatedByDisplayName { get; set; }
+}
+
 public class EmailSettingsViewModel
 {
     [Required, MaxLength(250)]

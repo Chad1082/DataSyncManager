@@ -14,15 +14,18 @@ public class SettingsController : Controller
 {
     private readonly IEmailSettingsService _emailSettings;
     private readonly IEmailService _email;
+    private readonly IEmailTemplateService _emailTemplate;
     private readonly UserManager<ApplicationUser> _users;
 
     public SettingsController(
         IEmailSettingsService emailSettings,
         IEmailService email,
+        IEmailTemplateService emailTemplate,
         UserManager<ApplicationUser> users)
     {
         _emailSettings = emailSettings;
         _email = email;
+        _emailTemplate = emailTemplate;
         _users = users;
     }
 
@@ -89,6 +92,77 @@ public class SettingsController : Controller
             TempData["Error"] = $"Test failed: {error}";
 
         return RedirectToAction(nameof(Email));
+    }
+
+    // GET /Settings/EmailTemplate
+    public async Task<IActionResult> EmailTemplate()
+    {
+        var t = await _emailTemplate.GetAsync();
+        var vm = new EmailTemplateViewModel
+        {
+            HtmlTemplate = t.HtmlTemplate,
+            UpdatedAt = t.UpdatedAt == default ? null : t.UpdatedAt,
+        };
+
+        if (t.UpdatedByUserId is not null)
+        {
+            var updater = await _users.FindByIdAsync(t.UpdatedByUserId);
+            vm.UpdatedByDisplayName = updater?.DisplayName ?? updater?.Email;
+        }
+
+        return View(vm);
+    }
+
+    // POST /Settings/EmailTemplate
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EmailTemplate(EmailTemplateViewModel vm)
+    {
+        if (!ModelState.IsValid) return View(vm);
+
+        await _emailTemplate.SaveAsync(new EmailTemplate
+        {
+            HtmlTemplate = vm.HtmlTemplate,
+            UpdatedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier),
+        });
+
+        TempData["Success"] = "Email template saved.";
+        return RedirectToAction(nameof(EmailTemplate));
+    }
+
+    // POST /Settings/ResetEmailTemplate
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetEmailTemplate()
+    {
+        await _emailTemplate.SaveAsync(new EmailTemplate
+        {
+            HtmlTemplate = EmailTemplateService.DefaultHtmlTemplate,
+            SiteBaseUrl = null,
+            UpdatedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier),
+        });
+
+        TempData["Success"] = "Email template reset to default.";
+        return RedirectToAction(nameof(EmailTemplate));
+    }
+
+    // GET /Settings/EmailTemplatePreview
+    [HttpGet]
+    public async Task<IActionResult> EmailTemplatePreview()
+    {
+        var sampleContent =
+            "<h2 style=\"margin-top:0;color:#1f2937;\">Sample Notification</h2>" +
+            "<p>This is a preview of how your email notifications will look when jobs complete.</p>" +
+            "<table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;\">" +
+            "<tr style=\"background-color:#f8f9fa;\"><th style=\"padding:8px 12px;text-align:left;border:1px solid #dee2e6;\">Field</th><th style=\"padding:8px 12px;text-align:left;border:1px solid #dee2e6;\">Value</th></tr>" +
+            "<tr><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">Job Name</td><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">Sync Incidents</td></tr>" +
+            "<tr style=\"background-color:#f8f9fa;\"><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">Status</td><td style=\"padding:8px 12px;border:1px solid #dee2e6;\"><span style=\"color:#198754;font-weight:bold;\">Succeeded</span></td></tr>" +
+            "<tr><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">Rows Read</td><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">1,234</td></tr>" +
+            "<tr style=\"background-color:#f8f9fa;\"><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">Rows Inserted</td><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">42</td></tr>" +
+            "<tr><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">Rows Updated</td><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">1,192</td></tr>" +
+            "<tr style=\"background-color:#f8f9fa;\"><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">Duration</td><td style=\"padding:8px 12px;border:1px solid #dee2e6;\">0m 47s</td></tr>" +
+            "</table>";
+
+        var html = await _emailTemplate.ApplyAsync(sampleContent);
+        return Content(html, "text/html");
     }
 
     // ── Helpers ──────────────────────────────────────────────

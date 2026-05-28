@@ -19,6 +19,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<JobRunLog> JobRunLogs => Set<JobRunLog>();
 
     public DbSet<EmailSettings> EmailSettings => Set<EmailSettings>();
+    public DbSet<EmailTemplate> EmailTemplates => Set<EmailTemplate>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -115,6 +116,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         });
 
         builder.Entity<EmailSettings>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever(); // singleton — we control Id = 1
+        });
+
+        builder.Entity<EmailTemplate>(e =>
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).ValueGeneratedNever(); // singleton — we control Id = 1

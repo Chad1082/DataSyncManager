@@ -101,6 +101,7 @@ try
     builder.Services.AddHttpClient();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<IEmailSettingsService, EmailSettingsService>();
+    builder.Services.AddScoped<IEmailTemplateService, EmailTemplateService>();
     builder.Services.AddScoped<IEmailService, EmailService>();
     builder.Services.AddScoped<ISchemaService, SchemaService>();
     builder.Services.AddScoped<IJobExecutionService, JobExecutionService>();

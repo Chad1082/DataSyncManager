@@ -1,0 +1,166 @@
+@model EmailTemplateViewModel
+@{
+    ViewData["Title"] = "Email Template";
+}
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="mb-0 fw-bold"><i class="bi bi-file-earmark-code me-2 text-primary"></i>Email Template</h4>
+        <small class="text-muted">Customise the HTML wrapper applied to all outgoing notifications</small>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="openPreview()">
+            <i class="bi bi-eye me-1"></i>Preview
+        </button>
+    </div>
+</div>
+
+@if (TempData["Success"] is string ok)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle me-2"></i>@ok
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+@if (TempData["Error"] is string err)
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>@err
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<div class="row g-4">
+
+    <!-- Editor -->
+    <div class="col-lg-8">
+        <form asp-action="EmailTemplate" method="post" id="templateForm">
+            <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2" role="alert"></div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header py-3 d-flex align-items-center justify-content-between">
+                    <h6 class="mb-0 fw-semibold"><i class="bi bi-code-slash me-2"></i>HTML Template</h6>
+                    <span class="badge bg-secondary">Placeholders: <code class="text-white">{{LOGO}}</code> &nbsp; <code class="text-white">{{CONTENT}}</code></span>
+                </div>
+                <div class="card-body p-0">
+                    <textarea asp-for="HtmlTemplate"
+                              class="form-control font-monospace border-0 rounded-0 rounded-bottom"
+                              rows="28"
+                              style="resize:vertical;font-size:0.8rem;tab-size:2;"
+                              spellcheck="false"></textarea>
+                    <span asp-validation-for="HtmlTemplate" class="text-danger small px-3 pb-2 d-block"></span>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-floppy me-1"></i>Save Template
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="openPreview()">
+                    <i class="bi bi-eye me-1"></i>Preview
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Sidebar info -->
+    <div class="col-lg-4">
+
+        <!-- Placeholders reference -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-3">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-braces me-2"></i>Placeholders</h6>
+            </div>
+            <div class="card-body">
+                <dl class="mb-0">
+                    <dt class="font-monospace text-primary">{{LOGO}}</dt>
+                    <dd class="text-muted small mb-3">
+                        Replaced with an <code>&lt;img&gt;</code> tag pointing to your logo, or a
+                        plain text fallback if no Site Base URL is configured.
+                    </dd>
+                    <dt class="font-monospace text-primary">{{CONTENT}}</dt>
+                    <dd class="text-muted small mb-0">
+                        Replaced with the notification-specific HTML — job stats, status, row counts, etc.
+                    </dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Tips -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header py-3">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-lightbulb me-2"></i>Tips</h6>
+            </div>
+            <div class="card-body">
+                <ul class="small text-muted mb-0 ps-3">
+                    <li class="mb-2">The <code>{{LOGO}}</code> placeholder is replaced with the image at <code>wwwroot/images/Data sync Manager.png</code>, <strong>embedded directly</strong> in the email as a base64 data URI — no server access required by recipients.</li>
+                    <li class="mb-2">Use <strong>inline CSS</strong> — most email clients strip <code>&lt;style&gt;</code> blocks.</li>
+                    <li class="mb-2">Use <strong>table-based layouts</strong> for consistent rendering across Outlook, Gmail, and Apple Mail.</li>
+                    <li class="mb-2">Keep the template width at <strong>600 px max</strong> for mobile compatibility.</li>
+                    <li>Click <strong>Preview</strong> to see a rendered sample before saving.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Reset + metadata -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-3">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-arrow-counterclockwise me-2"></i>Reset</h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">Restore the built-in default template. Your current template will be overwritten.</p>
+                <form asp-action="ResetEmailTemplate" method="post"
+                      onsubmit="return confirm('Reset the template to the built-in default? This cannot be undone.');">
+                    <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset to Default
+                    </button>
+                </form>
+
+                @if (Model.UpdatedAt.HasValue)
+                {
+                    <hr class="my-3">
+                    <p class="small text-muted mb-0">
+                        <i class="bi bi-clock me-1"></i>Last saved
+                        <strong>@Model.UpdatedAt.Value.ToString("dd MMM yyyy HH:mm") UTC</strong>
+                        @if (!string.IsNullOrEmpty(Model.UpdatedByDisplayName))
+                        {
+                            <span>by <strong>@Model.UpdatedByDisplayName</strong></span>
+                        }
+                    </p>
+                }
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Preview modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-eye me-2"></i>Email Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="previewFrame" src="" style="width:100%;height:70vh;border:none;"></iframe>
+            </div>
+            <div class="modal-footer">
+                <small class="text-muted me-auto">This preview uses the <strong>saved</strong> template and site URL.</small>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        function openPreview() {
+            const frame = document.getElementById('previewFrame');
+            frame.src = '@Url.Action("EmailTemplatePreview", "Settings")?' + new Date().getTime();
+            const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+            modal.show();
+        }
+    </script>
+}
