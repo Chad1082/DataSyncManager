@@ -128,6 +128,19 @@
                     </div>
                     <div id="upsertPanel">
                         <div class="mb-3">
+                            <label asp-for="SyncStartDate" class="form-label fw-semibold">
+                                Sync Start Date <span class="text-danger">*</span>
+                            </label>
+                            <input asp-for="SyncStartDate" type="date" class="form-control"
+                                   id="syncStartDateInput"
+                                   value="@(Model.SyncStartDate.HasValue ? Model.SyncStartDate.Value.ToString("yyyy-MM-dd") : "")" />
+                            <div class="form-text">
+                                The earliest date from which data will be retrieved on the <strong>first run</strong>.
+                                Subsequent runs continue automatically from the previous run's timestamp.
+                            </div>
+                            <span asp-validation-for="SyncStartDate" class="text-danger small"></span>
+                        </div>
+                        <div class="mb-3">
                             <label class="form-label fw-semibold">Unique Key Fields</label>
                             <select id="uniqueKeySelect" class="form-select" multiple size="4">
                                 <option disabled class="text-muted fst-italic">Load a source table first</option>
@@ -194,6 +207,34 @@
                 </div>
                 <div class="card-footer bg-transparent">
                     <small class="text-muted" id="fieldCount">0 fields selected</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SQL Preview -->
+    <div class="mt-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-3 d-flex align-items-center justify-content-between">
+                <h6 class="mb-0 fw-semibold"><i class="bi bi-code-square me-2 text-primary"></i>SQL Preview</h6>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="buildSqlPreview()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="row g-0">
+                    <div class="col-lg-6 border-end">
+                        <div class="px-3 pt-3 pb-1">
+                            <span class="badge bg-secondary mb-2"><i class="bi bi-database-up me-1"></i>Source Query</span>
+                        </div>
+                        <pre id="sqlSource" class="m-0 px-3 pb-3 small" style="background:transparent;white-space:pre-wrap;word-break:break-all;min-height:120px;color:#0d6efd;font-family:monospace;">-- Select a source table above</pre>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="px-3 pt-3 pb-1">
+                            <span class="badge bg-secondary mb-2"><i class="bi bi-database-down me-1"></i>Destination Operation</span>
+                        </div>
+                        <pre id="sqlDest" class="m-0 px-3 pb-3 small" style="background:transparent;white-space:pre-wrap;word-break:break-all;min-height:120px;color:#0d6efd;font-family:monospace;">-- Configure destination above</pre>
+                    </div>
                 </div>
             </div>
         </div>
@@ -374,6 +415,103 @@
             document.getElementById('ChangeDateField').value =
                 document.getElementById('changeDateSelect').value;
         });
+
+        // ── SQL Preview ───────────────────────────────────
+
+        function buildSqlPreview() {
+            const syncMode       = document.getElementById('syncModeSelect').value;
+            const sourceTable    = document.getElementById('sourceTableSelect').value;
+            const fields         = [...document.querySelectorAll('.field-check:checked')].map(cb => cb.dataset.name);
+            const destRaw        = document.getElementById('destTableHidden').value ||
+                                   (() => { const v = document.getElementById('destTableSelect').value; return v !== '__new__' ? v : ''; })();
+            const destDb         = document.getElementById('DestinationDatabase').value;
+            const changeDateField = document.getElementById('ChangeDateField').value ||
+                                    document.getElementById('changeDateSelect').value;
+            const daysPerBatch   = parseFloat(document.getElementById('DaysPerBatch').value) || 1;
+            const syncStartDate  = document.getElementById('syncStartDateInput')?.value;
+
+            const destParts  = destRaw ? destRaw.split('.') : [];
+            const destSchema = destParts.length === 2 ? destParts[0] : 'dbo';
+            const destTbl    = destParts.length === 2 ? destParts[1] : (destRaw || null);
+
+            // ── Source query ──────────────────────────
+            let sourceSql;
+            if (!sourceTable) {
+                sourceSql = '-- Select a source table above';
+            } else if (!fields.length) {
+                sourceSql = '-- Select at least one field';
+            } else {
+                const cols = fields.map(f => '    [' + f + ']').join(',\n');
+                sourceSql = 'SELECT\n' + cols + '\nFROM ' + sourceTable;
+                if (syncMode === 'Upsert' && changeDateField) {
+                    const startDt = syncStartDate
+                        ? new Date(syncStartDate + 'T00:00:00Z')
+                        : new Date(Date.now() - daysPerBatch * 86400000);
+                    const endDt = new Date(startDt.getTime() + daysPerBatch * 86400000);
+                    const fmt = d => d.toISOString().slice(0, 19).replace('T', ' ');
+                    sourceSql += '\nWHERE [' + changeDateField + '] >= \'' + fmt(startDt) + '\''
+                               + '\n  AND [' + changeDateField + '] <  \'' + fmt(endDt) + '\'';
+                    sourceSql += '\n\n-- Repeated in ' + daysPerBatch + ' day window(s) up to current date';
+                }
+            }
+
+            // ── Destination operation ─────────────────
+            let destSql;
+            if (!destTbl) {
+                destSql = '-- Enter a destination table above';
+            } else if (syncMode === 'FullReplace') {
+                const fullRef = destDb ? '[' + destDb + '].[' + destSchema + '].[' + destTbl + ']'
+                                       : '[' + destSchema + '].[' + destTbl + ']';
+                destSql = '-- Step 1: clear existing data\nTRUNCATE TABLE ' + fullRef + ';\n\n'
+                        + '-- Step 2: bulk insert all source rows\n-- (SqlBulkCopy → ' + fullRef + ')';
+            } else {
+                const uniqueKeys = [...document.querySelectorAll('#uniqueKeySelect option:checked')].map(o => o.value);
+                if (!fields.length) {
+                    destSql = '-- Select fields above';
+                } else if (!uniqueKeys.length) {
+                    destSql = '-- Select Unique Key Fields above to preview the MERGE statement';
+                } else {
+                    const onClause  = uniqueKeys.map(k => '    t.[' + k + '] = s.[' + k + ']').join('\n    AND ');
+                    const nonKeys   = fields.filter(f => !uniqueKeys.includes(f));
+                    const setClause = (nonKeys.length
+                        ? nonKeys.map(f => '    t.[' + f + '] = s.[' + f + ']').join(',\n') + ',\n'
+                        : '') + '    t.[_SyncedAt] = GETUTCDATE()';
+                    const insCols = fields.map(f => '[' + f + ']').join(', ') + ', [_SyncedAt]';
+                    const insVals = fields.map(f => 's.[' + f + ']').join(', ') + ', GETUTCDATE()';
+
+                    destSql = '-- Step 1: bulk insert into temp staging table\n-- (SqlBulkCopy → #staging)\n\n'
+                        + '-- Step 2: merge staging into destination\n'
+                        + 'MERGE [' + destSchema + '].[' + destTbl + '] AS t\n'
+                        + 'USING #staging AS s ON (\n' + onClause + '\n)\n'
+                        + 'WHEN MATCHED THEN\n    UPDATE SET\n' + setClause + '\n'
+                        + 'WHEN NOT MATCHED BY TARGET THEN\n'
+                        + '    INSERT (' + insCols + ')\n'
+                        + '    VALUES (' + insVals + ')\n'
+                        + 'OUTPUT $action;';
+                }
+            }
+
+            document.getElementById('sqlSource').textContent = sourceSql;
+            document.getElementById('sqlDest').textContent   = destSql;
+        }
+
+        // Re-run preview after columns load
+        const _origLoadSourceColumns = loadSourceColumns;
+        loadSourceColumns = async function(t) {
+            await _origLoadSourceColumns(t);
+            buildSqlPreview();
+        };
+
+        // Hook all inputs that affect the preview
+        document.getElementById('syncModeSelect').addEventListener('change', buildSqlPreview);
+        document.getElementById('DaysPerBatch').addEventListener('input', buildSqlPreview);
+        document.getElementById('DestinationDatabase').addEventListener('input', buildSqlPreview);
+        document.getElementById('destTableSelect').addEventListener('change', buildSqlPreview);
+        document.getElementById('destTableHidden').addEventListener('change', buildSqlPreview);
+        document.getElementById('fieldsList').addEventListener('change', buildSqlPreview);
+        document.getElementById('uniqueKeySelect').addEventListener('change', buildSqlPreview);
+        document.getElementById('changeDateSelect').addEventListener('change', buildSqlPreview);
+        document.getElementById('syncStartDateInput')?.addEventListener('change', buildSqlPreview);
 
         // ── Init ──────────────────────────────────────────
         loadSourceTables();

@@ -201,16 +201,30 @@ public class JobExecutionService : IJobExecutionService
             await using var conn = new SqlConnection(csb.ConnectionString);
             await conn.OpenAsync(ct);
 
-            // Truncate
-            await new SqlCommand($"TRUNCATE TABLE [{schema}].[{table}]", conn).ExecuteNonQueryAsync(ct);
+            // Wrap truncate + bulk copy in a transaction so a failed load never leaves the table empty
+            await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+            try
+            {
+                await new SqlCommand($"TRUNCATE TABLE [{schema}].[{table}]", conn, tx)
+                    .ExecuteNonQueryAsync(ct);
 
-            // Bulk copy
-            using var bulk = new SqlBulkCopy(conn) { DestinationTableName = $"[{schema}].[{table}]" };
-            foreach (var f in job.JobFields)
-                bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
+                using var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.Default, tx)
+                {
+                    DestinationTableName = $"[{schema}].[{table}]"
+                };
+                foreach (var f in job.JobFields)
+                    bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
 
-            await bulk.WriteToServerAsync(data, ct);
-            run.RowsInserted = data.Rows.Count;
+                await bulk.WriteToServerAsync(data, ct);
+                run.RowsInserted = data.Rows.Count;
+
+                await tx.CommitAsync(ct);
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
         }, run, db, ct);
 
         await AddLog(db, run.Id, "Info", $"Inserted {run.RowsInserted} rows", ct);
@@ -226,78 +240,104 @@ public class JobExecutionService : IJobExecutionService
     {
         await AddLog(db, run.Id, "Info", "Mode: Upsert", ct);
 
-        // Determine date window: fetch last successful run to determine from date
         var lastRun = await db.JobRuns
             .Where(r => r.JobId == job.Id && r.Status == RunStatus.Succeeded)
             .OrderByDescending(r => r.CompletedAt)
             .FirstOrDefaultAsync(ct);
 
-        var windowStart = lastRun?.StartedAt.AddDays(-(double)job.DaysPerBatch) ?? DateTime.UtcNow.AddDays(-(double)job.DaysPerBatch);
-        var windowEnd = DateTime.UtcNow;
+        DateTime syncFrom;
+        if (lastRun is not null)
+            syncFrom = lastRun.StartedAt;
+        else if (job.SyncStartDate.HasValue)
+            syncFrom = DateTime.SpecifyKind(job.SyncStartDate.Value, DateTimeKind.Utc);
+        else
+            syncFrom = DateTime.UtcNow.AddDays(-(double)job.DaysPerBatch);
 
-        await AddLog(db, run.Id, "Info", $"Date window: {windowStart:u} → {windowEnd:u}", ct);
+        var syncTo = DateTime.UtcNow;
+        var estimatedBatches = (int)Math.Ceiling((syncTo - syncFrom).TotalDays / (double)job.DaysPerBatch);
+
+        await AddLog(db, run.Id, "Info",
+            $"Sync window: {syncFrom:yyyy-MM-dd HH:mm} UTC → {syncTo:yyyy-MM-dd HH:mm} UTC " +
+            $"(~{estimatedBatches} batch{(estimatedBatches == 1 ? "" : "es")} of {job.DaysPerBatch}d)", ct);
         await db.SaveChangesAsync(ct);
-
-        var data = await FetchSourceDataAsync(job, src, windowStart, windowEnd, ct);
-        run.RowsRead = data.Rows.Count;
-        await AddLog(db, run.Id, "Info", $"Read {run.RowsRead} rows from source", ct);
-
-        if (data.Rows.Count == 0)
-        {
-            await AddLog(db, run.Id, "Info", "No rows to upsert", ct);
-            await db.SaveChangesAsync(ct);
-            return;
-        }
 
         var parts = job.DestinationTable.Split('.');
         var schema = parts.Length == 2 ? parts[0] : "dbo";
-        var table = parts.Length == 2 ? parts[1] : job.DestinationTable;
-        var stagingTable = $"#Stg_{table}_{Guid.NewGuid():N}";
+        var table  = parts.Length == 2 ? parts[1] : job.DestinationTable;
+
+        var keys      = (job.UniqueKeyFields ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var fieldList = job.JobFields.Select(f => f.DestinationFieldName ?? f.SourceFieldName).ToList();
+        var onClause  = string.Join(" AND ", keys.Select(k => $"t.[{k.Trim()}] = s.[{k.Trim()}]"));
+        var setClause = string.Join(", ", fieldList.Where(f => !keys.Contains(f.Trim())).Select(f => $"t.[{f}] = s.[{f}]"));
+        var insColList = string.Join(", ", fieldList.Select(f => $"[{f}]"));
+        var insValList = string.Join(", ", fieldList.Select(f => $"s.[{f}]"));
 
         var csb = new SqlConnectionStringBuilder(dest.ConnectionString) { InitialCatalog = job.DestinationDatabase };
 
-        await ExecuteWithRetryAsync(dest.RetryCount, dest.RetryDelaySeconds, async () =>
+        var batchStart = syncFrom;
+        var batchNum   = 0;
+
+        while (batchStart < syncTo)
         {
-            await using var conn = new SqlConnection(csb.ConnectionString);
-            await conn.OpenAsync(ct);
+            ct.ThrowIfCancellationRequested();
 
-            // Create staging table
-            var createStg = $"SELECT TOP 0 * INTO {stagingTable} FROM [{schema}].[{table}]";
-            await new SqlCommand(createStg, conn).ExecuteNonQueryAsync(ct);
+            var batchEnd = batchStart.AddDays((double)job.DaysPerBatch);
+            if (batchEnd > syncTo) batchEnd = syncTo;
+            batchNum++;
 
-            // Bulk into staging
-            using var bulk = new SqlBulkCopy(conn) { DestinationTableName = stagingTable };
-            foreach (var f in job.JobFields)
-                bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
-            await bulk.WriteToServerAsync(data, ct);
+            var data = await FetchSourceDataAsync(job, src, batchStart, batchEnd, ct);
+            run.RowsRead += data.Rows.Count;
 
-            // Build MERGE
-            var keys = (job.UniqueKeyFields ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
-            var onClause = string.Join(" AND ", keys.Select(k => $"t.[{k.Trim()}] = s.[{k.Trim()}]"));
-            var fieldList = job.JobFields.Select(f => f.DestinationFieldName ?? f.SourceFieldName).ToList();
-            var setClause = string.Join(", ", fieldList.Where(f => !keys.Contains(f)).Select(f => $"t.[{f}] = s.[{f}]"));
-            var insColList = string.Join(", ", fieldList.Select(f => $"[{f}]"));
-            var insValList = string.Join(", ", fieldList.Select(f => $"s.[{f}]"));
-
-            var merge = $"""
-                MERGE [{schema}].[{table}] AS t
-                USING {stagingTable} AS s ON {onClause}
-                WHEN MATCHED THEN UPDATE SET {setClause}, [_SyncedAt] = GETUTCDATE()
-                WHEN NOT MATCHED BY TARGET THEN INSERT ({insColList}, [_SyncedAt]) VALUES ({insValList}, GETUTCDATE())
-                OUTPUT $action;
-                """;
-
-            await using var mergeCmd = new SqlCommand(merge, conn);
-            await using var rdr = await mergeCmd.ExecuteReaderAsync(ct);
-            while (await rdr.ReadAsync(ct))
+            if (estimatedBatches > 1)
             {
-                if (rdr.GetString(0) == "INSERT") run.RowsInserted++;
-                else run.RowsUpdated++;
+                await AddLog(db, run.Id, "Info",
+                    $"Batch {batchNum}/{estimatedBatches} ({batchStart:yyyy-MM-dd} → {batchEnd:yyyy-MM-dd}): {data.Rows.Count} rows", ct);
+                await db.SaveChangesAsync(ct);
             }
-        }, run, db, ct);
 
-        await AddLog(db, run.Id, "Info",
-            $"Upsert complete: {run.RowsInserted} inserted, {run.RowsUpdated} updated", ct);
+            if (data.Rows.Count > 0)
+            {
+                var staging = $"#Stg_{Guid.NewGuid():N}";
+                var merge = $"""
+                    MERGE [{schema}].[{table}] AS t
+                    USING {staging} AS s ON {onClause}
+                    WHEN MATCHED THEN UPDATE SET {setClause}, [_SyncedAt] = GETUTCDATE()
+                    WHEN NOT MATCHED BY TARGET THEN INSERT ({insColList}, [_SyncedAt]) VALUES ({insValList}, GETUTCDATE())
+                    OUTPUT $action;
+                    """;
+
+                await ExecuteWithRetryAsync(dest.RetryCount, dest.RetryDelaySeconds, async () =>
+                {
+                    await using var conn = new SqlConnection(csb.ConnectionString);
+                    await conn.OpenAsync(ct);
+
+                    await new SqlCommand($"SELECT TOP 0 * INTO {staging} FROM [{schema}].[{table}]", conn)
+                        .ExecuteNonQueryAsync(ct);
+
+                    using var bulk = new SqlBulkCopy(conn) { DestinationTableName = staging };
+                    foreach (var f in job.JobFields)
+                        bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
+                    await bulk.WriteToServerAsync(data, ct);
+
+                    await using var mergeCmd = new SqlCommand(merge, conn);
+                    await using var rdr = await mergeCmd.ExecuteReaderAsync(ct);
+                    while (await rdr.ReadAsync(ct))
+                    {
+                        if (rdr.GetString(0) == "INSERT") run.RowsInserted++;
+                        else run.RowsUpdated++;
+                    }
+                }, run, db, ct);
+            }
+
+            batchStart = batchEnd;
+        }
+
+        if (run.RowsRead == 0)
+            await AddLog(db, run.Id, "Info", "No rows to upsert", ct);
+        else
+            await AddLog(db, run.Id, "Info",
+                $"Upsert complete: {run.RowsRead} read, {run.RowsInserted} inserted, {run.RowsUpdated} updated", ct);
+
         await db.SaveChangesAsync(ct);
     }
 

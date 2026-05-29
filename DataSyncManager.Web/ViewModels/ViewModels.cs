@@ -262,6 +262,9 @@ public class JobFormViewModel
     [Range(0.04, 31)]
     public decimal DaysPerBatch { get; set; } = 1;
 
+    [Display(Name = "Sync Start Date")]
+    public DateTime? SyncStartDate { get; set; }
+
     // Alerts
     public AlertOn JobAlertOn { get; set; } = AlertOn.None;
     // Convenience alias used in views

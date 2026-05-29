@@ -192,6 +192,9 @@ public class Job
 
     public decimal DaysPerBatch { get; set; } = 1;           // 0.25 – 31
 
+    // Initial sync window — used on the first run (no prior successful run) to determine how far back to pull
+    public DateTime? SyncStartDate { get; set; }
+
     // Alerts
     public AlertOn JobAlertOn { get; set; } = AlertOn.None;
 

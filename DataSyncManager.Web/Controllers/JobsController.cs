@@ -48,6 +48,9 @@ public class JobsController : Controller
         ModelState.Remove("AvailableDestinations");
         ModelState.Remove("ProjectName");
 
+        if (vm.SyncMode == SyncMode.Upsert && !vm.SyncStartDate.HasValue)
+            ModelState.AddModelError(nameof(vm.SyncStartDate), "A start date is required for Upsert jobs.");
+
         if (!ModelState.IsValid)
         {
             await PopulateVmAsync(vm);
@@ -68,6 +71,9 @@ public class JobsController : Controller
             UniqueKeyFields = vm.UniqueKeyFields,
             ChangeDateField = vm.ChangeDateField,
             DaysPerBatch = vm.DaysPerBatch,
+            SyncStartDate = vm.SyncStartDate.HasValue
+                ? DateTime.SpecifyKind(vm.SyncStartDate.Value, DateTimeKind.Utc)
+                : null,
             JobAlertOn = vm.JobAlertOn,
             AlertEmailAddresses = vm.AlertEmailAddresses,
             SortOrder = vm.SortOrder,
@@ -114,6 +120,7 @@ public class JobsController : Controller
             UniqueKeyFields = job.UniqueKeyFields,
             ChangeDateField = job.ChangeDateField,
             DaysPerBatch = job.DaysPerBatch,
+            SyncStartDate = job.SyncStartDate,
             JobAlertOn = job.JobAlertOn,
             AlertEmailAddresses = job.AlertEmailAddresses,
             SortOrder = job.SortOrder,
@@ -160,6 +167,9 @@ public class JobsController : Controller
         job.UniqueKeyFields = vm.UniqueKeyFields;
         job.ChangeDateField = vm.ChangeDateField;
         job.DaysPerBatch = vm.DaysPerBatch;
+        job.SyncStartDate = vm.SyncStartDate.HasValue
+            ? DateTime.SpecifyKind(vm.SyncStartDate.Value, DateTimeKind.Utc)
+            : null;
         job.JobAlertOn = vm.JobAlertOn;
         job.AlertEmailAddresses = vm.AlertEmailAddresses;
         job.SortOrder = vm.SortOrder;
