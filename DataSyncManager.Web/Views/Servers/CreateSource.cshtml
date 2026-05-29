@@ -114,6 +114,31 @@
                 </div>
             </div>
 
+            <!-- ODBC date format panel — shown only for ODBC -->
+            <div class="card shadow-sm mb-4 d-none" id="odbcOptionsPanel">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-calendar-date me-2"></i>ODBC Date Format
+                </div>
+                <div class="card-body">
+                    <label asp-for="SourceDateFormat" class="form-label fw-semibold">Date Filter Format</label>
+                    <input asp-for="SourceDateFormat" class="form-control font-monospace" id="sourceDateFormatInput"
+                           placeholder="yyyy-MM-dd HH:mm:ss" />
+                    <div class="form-text">
+                        Format used when building date range filters in ODBC queries.
+                        Uses .NET <a href="https://learn.microsoft.com/en-us/dotnet/standard/base-types/custom-date-and-time-format-strings" target="_blank" rel="noopener">custom date/time format strings</a>.
+                    </div>
+                    <span asp-validation-for="SourceDateFormat" class="text-danger small"></span>
+                    <div class="mt-2 d-flex flex-wrap gap-2">
+                        <span class="text-muted small me-1 align-self-center">Common formats:</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-dd HH:mm:ss')">yyyy-MM-dd HH:mm:ss</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-ddTHH:mm:ss')">yyyy-MM-ddTHH:mm:ss</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('MM/dd/yyyy HH:mm:ss')">MM/dd/yyyy HH:mm:ss</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('dd/MM/yyyy HH:mm:ss')">dd/MM/yyyy HH:mm:ss</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-dd')">yyyy-MM-dd</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="card shadow-sm mb-4">
                 <div class="card-header fw-semibold">
                     <i class="bi bi-arrow-repeat me-2"></i>Retry Settings
@@ -146,11 +171,12 @@
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
     <script>
     (function () {
-        const typeSelect  = document.getElementById('sourceTypeSelect');
-        const connPanel   = document.getElementById('connStringPanel');
-        const restPanel   = document.getElementById('restApiPanel');
-        const connInput   = document.getElementById('connStringInput');
-        const connHint    = document.getElementById('connStringHint');
+        const typeSelect    = document.getElementById('sourceTypeSelect');
+        const connPanel     = document.getElementById('connStringPanel');
+        const restPanel     = document.getElementById('restApiPanel');
+        const odbcPanel     = document.getElementById('odbcOptionsPanel');
+        const connInput     = document.getElementById('connStringInput');
+        const connHint      = document.getElementById('connStringHint');
 
         const hints = {
             SqlServer: {
@@ -167,8 +193,10 @@
 
         async function toggle() {
             const isRest = typeSelect.value === 'RestApi';
+            const isOdbc = typeSelect.value === 'Odbc';
             connPanel.classList.toggle('d-none', isRest);
             restPanel.classList.toggle('d-none', !isRest);
+            odbcPanel.classList.toggle('d-none', !isOdbc);
 
             if (!isRest) {
                 const cfg = hints[typeSelect.value] || hints.SqlServer;
@@ -227,6 +255,10 @@
             if (pwd) cs += `Pwd=${pwd};`;
             document.getElementById('connStringInput').value = cs;
         }
+
+        window.setDateFmt = function(fmt) {
+            document.getElementById('sourceDateFormatInput').value = fmt;
+        };
 
         typeSelect.addEventListener('change', toggle);
         toggle();

@@ -128,6 +128,10 @@ public class SourceServerViewModel
     [Range(5, 300)]
     public int RetryDelaySeconds { get; set; } = 30;
 
+    [MaxLength(50)]
+    [Display(Name = "Date Filter Format")]
+    public string SourceDateFormat { get; set; } = "yyyy-MM-dd HH:mm:ss";
+
     public bool IsActive { get; set; } = true;
 }
 

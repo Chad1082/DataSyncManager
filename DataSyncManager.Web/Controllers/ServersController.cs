@@ -34,7 +34,8 @@ public class ServersController : Controller
             BaseUrl           = s.BaseUrl,
             AuthHeader        = s.AuthHeader,
             RetryCount        = s.RetryCount,
-            RetryDelaySeconds = s.RetryDelaySeconds
+            RetryDelaySeconds = s.RetryDelaySeconds,
+            SourceDateFormat  = s.SourceDateFormat
         }).ToList();
         return View(vms);
     }
@@ -57,6 +58,7 @@ public class ServersController : Controller
             DefaultDatabase = vm.DefaultDatabase,
             RetryCount = vm.RetryCount,
             RetryDelaySeconds = vm.RetryDelaySeconds,
+            SourceDateFormat = string.IsNullOrWhiteSpace(vm.SourceDateFormat) ? "yyyy-MM-dd HH:mm:ss" : vm.SourceDateFormat.Trim(),
             IsActive = vm.IsActive,
             CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
         };
@@ -78,7 +80,8 @@ public class ServersController : Controller
             Id = s.Id, Name = s.Name, SourceType = s.SourceType,
             ConnectionString = s.ConnectionString, BaseUrl = s.BaseUrl, AuthHeader = s.AuthHeader,
             DefaultDatabase = s.DefaultDatabase, RetryCount = s.RetryCount,
-            RetryDelaySeconds = s.RetryDelaySeconds, IsActive = s.IsActive
+            RetryDelaySeconds = s.RetryDelaySeconds, SourceDateFormat = s.SourceDateFormat,
+            IsActive = s.IsActive
         });
     }
 
@@ -94,6 +97,7 @@ public class ServersController : Controller
         s.ConnectionString = vm.ConnectionString; s.BaseUrl = vm.BaseUrl;
         s.AuthHeader = vm.AuthHeader; s.DefaultDatabase = vm.DefaultDatabase;
         s.RetryCount = vm.RetryCount; s.RetryDelaySeconds = vm.RetryDelaySeconds;
+        s.SourceDateFormat = string.IsNullOrWhiteSpace(vm.SourceDateFormat) ? "yyyy-MM-dd HH:mm:ss" : vm.SourceDateFormat.Trim();
         s.IsActive = vm.IsActive;
 
         await _db.SaveChangesAsync();

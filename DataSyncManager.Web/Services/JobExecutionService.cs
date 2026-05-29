@@ -349,7 +349,10 @@ public class JobExecutionService : IJobExecutionService
         var sql = $"SELECT {fields} FROM {job.SourceTable}";
 
         if (from.HasValue && to.HasValue && !string.IsNullOrEmpty(job.ChangeDateField))
-            sql += $" WHERE [{job.ChangeDateField}] >= '{from:yyyy-MM-dd HH:mm:ss}' AND [{job.ChangeDateField}] < '{to:yyyy-MM-dd HH:mm:ss}'";
+        {
+            var fmt = src.SourceDateFormat;
+            sql += $" WHERE [{job.ChangeDateField}] >= '{from.Value.ToString(fmt)}' AND [{job.ChangeDateField}] < '{to.Value.ToString(fmt)}'";
+        }
 
         using var conn = new OdbcConnection(src.ConnectionString);
         conn.Open();

@@ -80,6 +80,10 @@ public class SourceServer
     public int RetryCount { get; set; } = 3;
     public int RetryDelaySeconds { get; set; } = 30;
 
+    // Format string used when interpolating dates into ODBC WHERE clauses (ignored for SQL Server / REST API)
+    [MaxLength(50)]
+    public string SourceDateFormat { get; set; } = "yyyy-MM-dd HH:mm:ss";
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string? CreatedByUserId { get; set; }
