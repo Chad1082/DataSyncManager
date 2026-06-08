@@ -235,10 +235,28 @@ public class JobExecutionService : IJobExecutionService
     // Upsert Mode (windowed by DaysPerBatch)
     // ──────────────────────────────────────────────────────────
 
+    // ──────────────────────────────────────────────────────────
+    // Upsert Mode (windowed by DaysPerBatch, with overlap buffer)
+    // ──────────────────────────────────────────────────────────
+
     private async Task ExecuteUpsertAsync(Job job, SourceServer src, DestinationServer dest,
         JobRun run, ApplicationDbContext db, CancellationToken ct)
     {
         await AddLog(db, run.Id, "Info", "Mode: Upsert", ct);
+
+        // ── Determine sync window start ──────────────────────────────────────────
+        //
+        // Strategy: CompletedAt of the last successful run, minus a configurable
+        // overlap buffer. The overlap re-scans the tail of the previous window,
+        // which is safe because MERGE is idempotent — duplicate rows hit WHEN MATCHED
+        // and produce a no-op update. This guards against:
+        //   • In-flight writes that committed after the previous run's window closed
+        //   • Source DB clock skew (especially relevant for ODBC sources)
+        //   • Rows backfilled with a ChangeDateField near the last window boundary
+        //
+        // MaxSourceTimestamp is recorded separately as a diagnostic watermark.
+        // It is NOT used to drive the window — that keeps the time-anchor as the
+        // safety net if a source stops updating ChangeDateField correctly.
 
         var lastRun = await db.JobRuns
             .Where(r => r.JobId == job.Id && r.Status == RunStatus.Succeeded)
@@ -246,28 +264,60 @@ public class JobExecutionService : IJobExecutionService
             .FirstOrDefaultAsync(ct);
 
         DateTime syncFrom;
-        if (lastRun is not null)
-            syncFrom = lastRun.StartedAt;
+        string windowReason;
+
+        if (lastRun?.CompletedAt is not null)
+        {
+            var overlap = TimeSpan.FromMinutes(job.SyncOverlapMinutes);
+            syncFrom = lastRun.CompletedAt.Value - overlap;
+            windowReason = $"last successful run completed {lastRun.CompletedAt.Value:yyyy-MM-dd HH:mm} UTC, minus {job.SyncOverlapMinutes}m overlap";
+
+            // Warn if the previous run's MaxSourceTimestamp looks stale — more than
+            // 2× the expected schedule gap behind the window start. This is a signal,
+            // not an error; log it so the operator can investigate.
+            if (lastRun.MaxSourceTimestamp.HasValue)
+            {
+                var staleness = syncFrom - lastRun.MaxSourceTimestamp.Value;
+                if (staleness > TimeSpan.FromDays((double)job.DaysPerBatch * 2))
+                {
+                    await AddLog(db, run.Id, "Warning",
+                        $"Previous run's MaxSourceTimestamp ({lastRun.MaxSourceTimestamp.Value:yyyy-MM-dd HH:mm} UTC) " +
+                        $"is {staleness.TotalHours:F1}h behind the window start. " +
+                        $"Source data may be stale, or '{job.ChangeDateField}' is not being updated correctly.", ct);
+                }
+            }
+        }
         else if (job.SyncStartDate.HasValue)
+        {
             syncFrom = DateTime.SpecifyKind(job.SyncStartDate.Value, DateTimeKind.Utc);
+            windowReason = "SyncStartDate (first run)";
+        }
         else
+        {
             syncFrom = DateTime.UtcNow.AddDays(-(double)job.DaysPerBatch);
+            windowReason = $"fallback: now minus {job.DaysPerBatch}d (no prior run, no SyncStartDate)";
+        }
+
+        // Record the window start on the run for audit purposes
+        run.SyncWindowStart = syncFrom;
 
         var syncTo = DateTime.UtcNow;
         var estimatedBatches = (int)Math.Ceiling((syncTo - syncFrom).TotalDays / (double)job.DaysPerBatch);
 
         await AddLog(db, run.Id, "Info",
             $"Sync window: {syncFrom:yyyy-MM-dd HH:mm} UTC → {syncTo:yyyy-MM-dd HH:mm} UTC " +
-            $"(~{estimatedBatches} batch{(estimatedBatches == 1 ? "" : "es")} of {job.DaysPerBatch}d)", ct);
+            $"(~{estimatedBatches} batch{(estimatedBatches == 1 ? "" : "es")} of {job.DaysPerBatch}d) — {windowReason}", ct);
         await db.SaveChangesAsync(ct);
+
+        // ── Batch loop ───────────────────────────────────────────────────────────
 
         var parts = job.DestinationTable.Split('.');
         var schema = parts.Length == 2 ? parts[0] : "dbo";
-        var table  = parts.Length == 2 ? parts[1] : job.DestinationTable;
+        var table = parts.Length == 2 ? parts[1] : job.DestinationTable;
 
-        var keys      = (job.UniqueKeyFields ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var keys = (job.UniqueKeyFields ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
         var fieldList = job.JobFields.Select(f => f.DestinationFieldName ?? f.SourceFieldName).ToList();
-        var onClause  = string.Join(" AND ", keys.Select(k => $"t.[{k.Trim()}] = s.[{k.Trim()}]"));
+        var onClause = string.Join(" AND ", keys.Select(k => $"t.[{k.Trim()}] = s.[{k.Trim()}]"));
         var setClause = string.Join(", ", fieldList.Where(f => !keys.Contains(f.Trim())).Select(f => $"t.[{f}] = s.[{f}]"));
         var insColList = string.Join(", ", fieldList.Select(f => $"[{f}]"));
         var insValList = string.Join(", ", fieldList.Select(f => $"s.[{f}]"));
@@ -275,7 +325,8 @@ public class JobExecutionService : IJobExecutionService
         var csb = new SqlConnectionStringBuilder(dest.ConnectionString) { InitialCatalog = job.DestinationDatabase };
 
         var batchStart = syncFrom;
-        var batchNum   = 0;
+        var batchNum = 0;
+        DateTime? maxSourceTs = null;   // tracks watermark across all batches
 
         while (batchStart < syncTo)
         {
@@ -297,6 +348,11 @@ public class JobExecutionService : IJobExecutionService
 
             if (data.Rows.Count > 0)
             {
+                // Update the running watermark from this batch
+                var batchMax = GetMaxTimestamp(data, job.ChangeDateField);
+                if (batchMax.HasValue && (maxSourceTs is null || batchMax.Value > maxSourceTs.Value))
+                    maxSourceTs = batchMax;
+
                 var staging = $"#Stg_{Guid.NewGuid():N}";
                 var merge = $"""
                     MERGE [{schema}].[{table}] AS t
@@ -332,13 +388,51 @@ public class JobExecutionService : IJobExecutionService
             batchStart = batchEnd;
         }
 
+        // ── Persist watermark and summary ────────────────────────────────────────
+
+        run.MaxSourceTimestamp = maxSourceTs;
+
         if (run.RowsRead == 0)
+        {
             await AddLog(db, run.Id, "Info", "No rows to upsert", ct);
+        }
         else
+        {
+            var watermarkMsg = maxSourceTs.HasValue
+                ? $", max source timestamp: {maxSourceTs.Value:yyyy-MM-dd HH:mm:ss} UTC"
+                : "";
             await AddLog(db, run.Id, "Info",
-                $"Upsert complete: {run.RowsRead} read, {run.RowsInserted} inserted, {run.RowsUpdated} updated", ct);
+                $"Upsert complete: {run.RowsRead} read, {run.RowsInserted} inserted, {run.RowsUpdated} updated{watermarkMsg}", ct);
+        }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Watermark helper — max value of ChangeDateField in a DataTable
+    // ──────────────────────────────────────────────────────────
+
+    private static DateTime? GetMaxTimestamp(DataTable data, string? changeDateField)
+    {
+        if (string.IsNullOrEmpty(changeDateField) || !data.Columns.Contains(changeDateField))
+            return null;
+
+        DateTime? max = null;
+        foreach (DataRow row in data.Rows)
+        {
+            var raw = row[changeDateField];
+            if (raw is DBNull || raw is null) continue;
+
+            DateTime parsed;
+            if (raw is DateTime dt)
+                parsed = dt;
+            else if (!DateTime.TryParse(raw.ToString(), out parsed))
+                continue;
+
+            if (max is null || parsed > max.Value)
+                max = parsed;
+        }
+        return max;
     }
 
     // ──────────────────────────────────────────────────────────

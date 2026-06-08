@@ -1,0 +1,188 @@
+@model DataSyncManager.Web.ViewModels.LogsViewModel
+@using DataSyncManager.Web.Models
+@{
+    ViewData["Title"] = "Run Logs";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var f = Model.Filter;
+    var totalPages = (int)Math.Ceiling((double)Model.TotalCount / f.PageSize);
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0"><i class="bi bi-journal-text me-2 text-primary"></i>Run Logs</h1>
+    <span class="text-muted small">@Model.TotalCount.ToString("N0") run@(Model.TotalCount != 1 ? "s" : "") found</span>
+</div>
+
+<!-- Filter Bar -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold text-muted mb-1">Project</label>
+                <select name="ProjectId" id="filterProject" class="form-select form-select-sm"
+                        onchange="this.form.submit()">
+                    <option value="">All Projects</option>
+                    @foreach (var p in f.Projects)
+                    {
+                        <option value="@p.Id" selected="@(f.ProjectId == p.Id ? "selected" : null)">@p.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold text-muted mb-1">Job</label>
+                <select name="JobId" class="form-select form-select-sm" @(!f.Jobs.Any() ? "disabled" : "")>
+                    <option value="">All Jobs</option>
+                    @foreach (var j in f.Jobs)
+                    {
+                        <option value="@j.Id" selected="@(f.JobId == j.Id ? "selected" : null)">@j.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold text-muted mb-1">Status</label>
+                <select name="Status" class="form-select form-select-sm">
+                    <option value="">All Statuses</option>
+                    @foreach (RunStatus s in Enum.GetValues(typeof(RunStatus)))
+                    {
+                        <option value="@((int)s)" selected="@(f.Status == s ? "selected" : null)">@s</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold text-muted mb-1">From</label>
+                <input type="date" name="From" class="form-control form-control-sm"
+                       value="@(f.From?.ToString("yyyy-MM-dd"))" />
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold text-muted mb-1">To</label>
+                <input type="date" name="To" class="form-control form-control-sm"
+                       value="@(f.To?.ToString("yyyy-MM-dd"))" />
+            </div>
+
+            <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm px-3">
+                    <i class="bi bi-funnel me-1"></i>Filter
+                </button>
+                <a href="@Url.Action("Index")" class="btn btn-outline-secondary btn-sm px-3">
+                    <i class="bi bi-x-circle me-1"></i>Clear
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Results Table -->
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Status</th>
+                    <th>Project</th>
+                    <th>Started</th>
+                    <th>Completed</th>
+                    <th>Duration</th>
+                    <th class="text-center">Jobs</th>
+                    <th class="text-end">Rows Read</th>
+                    <th class="text-end">Inserted</th>
+                    <th class="text-end">Updated</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (!Model.ProjectRuns.Any())
+            {
+                <tr>
+                    <td colspan="10" class="text-center text-muted py-5">
+                        <i class="bi bi-journal-x fs-2 d-block mb-2"></i>
+                        No runs match the current filter.
+                    </td>
+                </tr>
+            }
+            @foreach (var run in Model.ProjectRuns)
+            {
+                var dur = run.CompletedAt.HasValue
+                    ? (run.CompletedAt.Value - run.StartedAt).ToString(@"hh\:mm\:ss")
+                    : run.Status == RunStatus.Running ? "<span class='text-warning'>Running…</span>" : "—";
+                <tr>
+                    <td>@Html.Partial("_StatusBadge", run.Status)</td>
+                    <td class="fw-semibold">@run.ProjectName</td>
+                    <td><small class="text-muted">@run.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</small></td>
+                    <td><small class="text-muted">@(run.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</small></td>
+                    <td><small>@Html.Raw(dur)</small></td>
+                    <td class="text-center">
+                        <span class="badge bg-secondary">@run.JobCount</span>
+                        @if (run.FailedJobCount > 0)
+                        {
+                            <span class="badge bg-danger ms-1">@run.FailedJobCount failed</span>
+                        }
+                    </td>
+                    <td class="text-end text-muted small">@run.TotalRowsRead.ToString("N0")</td>
+                    <td class="text-end text-muted small">@run.TotalRowsInserted.ToString("N0")</td>
+                    <td class="text-end text-muted small">@run.TotalRowsUpdated.ToString("N0")</td>
+                    <td class="text-end">
+                        <a asp-action="ProjectRunDetails" asp-route-id="@run.RunId"
+                           class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-eye me-1"></i>Details
+                        </a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    @if (totalPages > 1)
+    {
+        <div class="card-footer bg-transparent d-flex justify-content-between align-items-center py-2">
+            <small class="text-muted">
+                Page @f.Page of @totalPages
+                &nbsp;·&nbsp;
+                @Model.TotalCount.ToString("N0") total runs
+            </small>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item @(f.Page <= 1 ? "disabled" : "")">
+                        <a class="page-link" asp-action="Index"
+                           asp-route-ProjectId="@f.ProjectId"
+                           asp-route-JobId="@f.JobId"
+                           asp-route-Status="@((int?)f.Status)"
+                           asp-route-From="@f.From?.ToString("yyyy-MM-dd")"
+                           asp-route-To="@f.To?.ToString("yyyy-MM-dd")"
+                           asp-route-Page="@(f.Page - 1)">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    </li>
+
+                    @for (var pg = Math.Max(1, f.Page - 2); pg <= Math.Min(totalPages, f.Page + 2); pg++)
+                    {
+                        <li class="page-item @(pg == f.Page ? "active" : "")">
+                            <a class="page-link" asp-action="Index"
+                               asp-route-ProjectId="@f.ProjectId"
+                               asp-route-JobId="@f.JobId"
+                               asp-route-Status="@((int?)f.Status)"
+                               asp-route-From="@f.From?.ToString("yyyy-MM-dd")"
+                               asp-route-To="@f.To?.ToString("yyyy-MM-dd")"
+                               asp-route-Page="@pg">@pg</a>
+                        </li>
+                    }
+
+                    <li class="page-item @(f.Page >= totalPages ? "disabled" : "")">
+                        <a class="page-link" asp-action="Index"
+                           asp-route-ProjectId="@f.ProjectId"
+                           asp-route-JobId="@f.JobId"
+                           asp-route-Status="@((int?)f.Status)"
+                           asp-route-From="@f.From?.ToString("yyyy-MM-dd")"
+                           asp-route-To="@f.To?.ToString("yyyy-MM-dd")"
+                           asp-route-Page="@(f.Page + 1)">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    }
+</div>

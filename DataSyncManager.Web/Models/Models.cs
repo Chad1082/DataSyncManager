@@ -195,6 +195,12 @@ public class Job
     // Initial sync window — used on the first run (no prior successful run) to determine how far back to pull
     public DateTime? SyncStartDate { get; set; }
 
+    // Overlap buffer applied to the start of each upsert window to guard against
+    // in-flight writes, source clock skew, and late-arriving rows.
+    // The next run's syncFrom = lastRun.CompletedAt - SyncOverlapMinutes.
+    // Default 5 minutes; increase for slow/unreliable source clocks.
+    public int SyncOverlapMinutes { get; set; } = 5;
+
     // Alerts
     public AlertOn JobAlertOn { get; set; } = AlertOn.None;
 
@@ -275,6 +281,19 @@ public class JobRun
 
     [MaxLength(4000)]
     public string? ErrorMessage { get; set; }
+
+    // Upsert diagnostics — only populated for Upsert-mode runs.
+
+    // The effective window start passed to the source query this run.
+    // Equals lastRun.CompletedAt - job.SyncOverlapMinutes (or SyncStartDate on
+    // first run). Stored so you can verify the window without digging through logs.
+    public DateTime? SyncWindowStart { get; set; }
+
+    // The maximum value of ChangeDateField seen across all rows fetched this run.
+    // Used as a health signal — if this is suspiciously old, source data may be stale
+    // or the ChangeDateField is not being updated correctly.
+    // Does NOT drive the next run's window (CompletedAt - overlap does that).
+    public DateTime? MaxSourceTimestamp { get; set; }
 
     public ICollection<JobRunLog> Logs { get; set; } = new List<JobRunLog>();
 }

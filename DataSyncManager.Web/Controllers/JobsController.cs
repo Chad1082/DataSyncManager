@@ -78,7 +78,8 @@ public class JobsController : Controller
             AlertEmailAddresses = vm.AlertEmailAddresses,
             SortOrder = vm.SortOrder,
             IsActive = vm.IsActive,
-            CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            SyncOverlapMinutes = vm.SyncOverlapMinutes
         };
 
         _db.Jobs.Add(job);
@@ -125,6 +126,7 @@ public class JobsController : Controller
             AlertEmailAddresses = job.AlertEmailAddresses,
             SortOrder = job.SortOrder,
             IsActive = job.IsActive,
+            SyncOverlapMinutes = job.SyncOverlapMinutes,
             SelectedFieldsJson = JsonConvert.SerializeObject(job.JobFields.Select(f => new
             {
                 sourceFieldName = f.SourceFieldName,
@@ -176,6 +178,7 @@ public class JobsController : Controller
         job.IsActive = vm.IsActive;
         job.UpdatedAt = DateTime.UtcNow;
         job.UpdatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        job.SyncOverlapMinutes = vm.SyncOverlapMinutes;
 
         // Replace fields
         _db.JobFields.RemoveRange(job.JobFields);

@@ -1,0 +1,256 @@
+﻿@model DataSyncManager.Web.Models.ProjectRun
+@using DataSyncManager.Web.Models
+
+@{
+    ViewData["Title"] = $"Run #{Model.Id} — {Model.Project.Name}";
+    var duration = Model.CompletedAt.HasValue
+        ? (Model.CompletedAt.Value - Model.StartedAt).ToString(@"hh\:mm\:ss")
+        : "—";
+    var totalRead = Model.JobRuns.Sum(j => j.RowsRead);
+    var totalInserted = Model.JobRuns.Sum(j => j.RowsInserted);
+    var totalUpdated = Model.JobRuns.Sum(j => j.RowsUpdated);
+}
+
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-controller="Logs" asp-action="Index">Run Logs</a></li>
+        <li class="breadcrumb-item"><a asp-controller="Projects" asp-action="Details" asp-route-id="@Model.ProjectId">@Model.Project.Name</a></li>
+        <li class="breadcrumb-item active">Run #@Model.Id</li>
+    </ol>
+</nav>
+
+<!-- Header -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+        <h4 class="mb-0 fw-semibold">
+            <i class="bi bi-journal-text me-2 text-primary"></i>Run #@Model.Id
+        </h4>
+        <div class="text-muted small mt-1">@Model.Project.Name</div>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+        @Html.Partial("_StatusBadge", Model.Status)
+        <a asp-controller="Logs" asp-action="ExportCsv" asp-route-projectRunId="@Model.Id"
+           class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-download me-1"></i>Export CSV
+        </a>
+    </div>
+</div>
+
+<!-- Summary card -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row g-3 text-center">
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Started</div>
+                <div class="fw-semibold small">@Model.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+                <div class="text-muted" style="font-size:.7rem;">UTC</div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Completed</div>
+                <div class="fw-semibold small">@(Model.CompletedAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</div>
+                @if (Model.CompletedAt.HasValue)
+                {
+                    <div class="text-muted" style="font-size:.7rem;">UTC</div>
+                }
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Duration</div>
+                <div class="fw-semibold">@duration</div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Rows read</div>
+                <div class="fw-semibold">@totalRead.ToString("N0")</div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Inserted</div>
+                <div class="fw-semibold text-success">@totalInserted.ToString("N0")</div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Updated</div>
+                <div class="fw-semibold text-primary">@totalUpdated.ToString("N0")</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Per-job cards -->
+@foreach (var jr in Model.JobRuns.OrderBy(j => j.StartedAt))
+{
+    var jDuration = jr.CompletedAt.HasValue
+        ? (jr.CompletedAt.Value - jr.StartedAt).ToString(@"hh\:mm\:ss")
+        : "—";
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-briefcase text-secondary"></i>
+                <span class="fw-semibold">@(jr.Job?.Name ?? $"Job #{jr.JobId}")</span>
+                @Html.Partial("_StatusBadge", jr.Status)
+            </div>
+            <div class="text-muted small">@jDuration</div>
+        </div>
+        <div class="card-body pb-2">
+
+            <!-- Row counts -->
+            <div class="row g-2 text-center mb-3">
+                <div class="col-6 col-sm-3">
+                    <div class="bg-light rounded p-2">
+                        <div class="fw-bold">@jr.RowsRead.ToString("N0")</div>
+                        <div class="text-muted" style="font-size:.7rem;">Read</div>
+                    </div>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <div class="bg-light rounded p-2">
+                        <div class="fw-bold text-success">@jr.RowsInserted.ToString("N0")</div>
+                        <div class="text-muted" style="font-size:.7rem;">Inserted</div>
+                    </div>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <div class="bg-light rounded p-2">
+                        <div class="fw-bold text-primary">@jr.RowsUpdated.ToString("N0")</div>
+                        <div class="text-muted" style="font-size:.7rem;">Updated</div>
+                    </div>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <div class="bg-light rounded p-2">
+                        <div class="fw-bold @(jr.RetryAttempts > 0 ? "text-warning" : "")">@jr.RetryAttempts</div>
+                        <div class="text-muted" style="font-size:.7rem;">Retries</div>
+                    </div>
+                </div>
+            </div>
+
+            @* Upsert window diagnostics — only shown for Upsert-mode jobs *@
+            @if (jr.Job?.SyncMode == SyncMode.Upsert && jr.SyncWindowStart.HasValue)
+            {
+                <div class="rounded border p-3 mb-3" style="background:#f8f9fa;">
+                    <div class="fw-semibold text-muted small text-uppercase mb-2">
+                        <i class="bi bi-clock-history me-1"></i>Upsert Window Diagnostics
+                    </div>
+                    <div class="row g-2 small">
+                        <div class="col-sm-4">
+                            <div class="text-muted">Window start</div>
+                            <div class="font-monospace">@jr.SyncWindowStart.Value.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
+                            @if (jr.Job?.SyncOverlapMinutes > 0)
+                            {
+                                <div class="text-muted" style="font-size:.75rem;">
+                                    Includes @jr.Job.SyncOverlapMinutes min overlap buffer
+                                </div>
+                            }
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="text-muted">Max source timestamp</div>
+                            @if (jr.MaxSourceTimestamp.HasValue)
+                            {
+                                var lag = jr.CompletedAt.HasValue
+                                    ? jr.CompletedAt.Value - jr.MaxSourceTimestamp.Value
+                                    : (TimeSpan?)null;
+
+                                <div class="font-monospace">@jr.MaxSourceTimestamp.Value.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
+                                @if (lag.HasValue)
+                                {
+                                    var lagCss = lag.Value.TotalHours > 24 ? "text-danger fw-semibold"
+                                               : lag.Value.TotalHours > 4 ? "text-warning fw-semibold"
+                                               : "text-success";
+                                    <div class="@lagCss" style="font-size:.75rem;">
+                                        @if (lag.Value.TotalDays >= 1)
+                                        {
+                                            <text>@((int)lag.Value.TotalDays)d @lag.Value.Hours.ToString("D2")h behind window close</text>
+                                        }
+                                        else
+                                        {
+                                            <text>@lag.Value.ToString(@"hh\:mm\:ss") behind window close</text>
+                                        }
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="text-muted fst-italic">n/a (no rows fetched)</div>
+                            }
+                        </div>
+                        <div class="col-sm-4">
+                            <div class="text-muted">Change date field</div>
+                            <div class="font-monospace">@(jr.Job?.ChangeDateField ?? "—")</div>
+                        </div>
+                    </div>
+
+                    @* Staleness warning *@
+                    @if (jr.MaxSourceTimestamp.HasValue && jr.SyncWindowStart.HasValue && jr.Job != null)
+                    {
+                        var staleness = jr.SyncWindowStart.Value - jr.MaxSourceTimestamp.Value;
+                        if (staleness > TimeSpan.FromDays((double)jr.Job.DaysPerBatch * 2))
+                        {
+                            <div class="alert alert-warning mt-2 mb-0 py-2 small">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                <strong>Stale watermark detected.</strong>
+                                MaxSourceTimestamp is @((int)staleness.TotalHours)h behind the window start.
+                                Check that <code>@jr.Job.ChangeDateField</code> is being updated on the source,
+                                or that a historical backfill has not skewed the watermark.
+                            </div>
+                        }
+                    }
+                </div>
+            }
+
+            @* Error message *@
+            @if (!string.IsNullOrEmpty(jr.ErrorMessage))
+            {
+                <div class="alert alert-danger py-2 small mb-3">
+                    <i class="bi bi-x-circle me-1"></i><strong>Error:</strong> @jr.ErrorMessage
+                </div>
+            }
+
+            <!-- Log entries -->
+            @if (jr.Logs.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0" style="font-size:.82rem;">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:160px;">Time (UTC)</th>
+                                <th style="width:80px;">Level</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var log in jr.Logs.OrderBy(l => l.LoggedAt))
+                            {
+                                var rowCss = log.Level switch
+                                {
+                                    "Error" => "table-danger",
+                                    "Warning" => "table-warning",
+                                    _ => ""
+                                };
+                                var badgeCss = log.Level switch
+                                {
+                                    "Error" => "danger",
+                                    "Warning" => "warning",
+                                    _ => "secondary"
+                                };
+                                <tr class="@rowCss">
+                                    <td class="text-muted font-monospace">@log.LoggedAt.ToString("HH:mm:ss.fff")</td>
+                                    <td><span class="badge bg-@badgeCss">@log.Level</span></td>
+                                    <td>@log.Message</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-muted small fst-italic">No log entries.</div>
+            }
+
+        </div>
+    </div>
+}
+
+@if (!Model.JobRuns.Any())
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-journal-x display-6 d-block mb-2"></i>
+        No job runs recorded for this project run.
+    </div>
+}

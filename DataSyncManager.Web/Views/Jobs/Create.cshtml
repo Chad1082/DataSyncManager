@@ -162,6 +162,15 @@
                         <input asp-for="DaysPerBatch" type="number" step="0.01" min="0.04" max="31" class="form-control" />
                         <small class="text-muted">How many days of data to retrieve per run. Use 0.25 for 6 hours, up to 31 for monthly.</small>
                     </div>
+                    <div class="col-md-3">
+                        <label asp-for="SyncOverlapMinutes" class="form-label fw-semibold">Overlap Buffer (min)</label>
+                        <input asp-for="SyncOverlapMinutes" class="form-control" type="number" min="0" max="1440" step="1" />
+                        <div class="form-text">
+                            Minutes subtracted from the previous run's completion time to set the window start.
+                            Guards against source clock skew and in-flight writes. Default: 5.
+                        </div>
+                        <span asp-validation-for="SyncOverlapMinutes" class="text-danger small"></span>
+                    </div>
                 </div>
             </div>
 

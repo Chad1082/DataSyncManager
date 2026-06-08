@@ -288,6 +288,10 @@ public class JobFormViewModel
     // Convenience: source server id for Edit view JS
     public int SourceServerId => ProjectSourceServer?.Id ?? 0;
 
+    [Range(0, 1440, ErrorMessage = "Overlap must be between 0 and 1440 minutes.")]
+    [Display(Name = "Overlap Buffer (minutes)")]
+    public int SyncOverlapMinutes { get; set; } = 5;
+
     // Convenience alias: Job name = Name
     public string JobName
     {

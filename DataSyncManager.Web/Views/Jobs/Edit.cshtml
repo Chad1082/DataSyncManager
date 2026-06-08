@@ -107,6 +107,15 @@
                                        min="0.04" max="31" step="0.01" />
                                 <div class="form-text">0.04 = ~1 hour. Max 31.</div>
                             </div>
+                            <div class="col-md-3">
+                                <label asp-for="SyncOverlapMinutes" class="form-label fw-semibold">Overlap Buffer (min)</label>
+                                <input asp-for="SyncOverlapMinutes" class="form-control" type="number" min="0" max="1440" step="1" />
+                                <div class="form-text">
+                                    Minutes subtracted from the previous run's completion time to set the window start.
+                                    Guards against source clock skew and in-flight writes. Default: 5.
+                                </div>
+                                <span asp-validation-for="SyncOverlapMinutes" class="text-danger small"></span>
+                            </div>
                         </div>
                     </div>
                 </div>
