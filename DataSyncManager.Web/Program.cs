@@ -34,7 +34,8 @@ try
            .WriteTo.Console()
            .WriteTo.File(
                path: Path.Combine(logDir, "datasync-.log"),
-               rollingInterval: RollingInterval.Month,
+               rollingInterval: RollingInterval.Month, 
+               retainedFileCountLimit: 6,
                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
            .WriteTo.MSSqlServer(
                connectionString: conn,
