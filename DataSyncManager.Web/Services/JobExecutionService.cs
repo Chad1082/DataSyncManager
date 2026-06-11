@@ -138,6 +138,21 @@ public class JobExecutionService : IJobExecutionService
         }
         else if (exists)
         {
+            // Ensure _SyncedAt exists (required by MERGE statement)
+            var syncedAtCmd = new SqlCommand(
+                "SELECT COUNT(1) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@s AND TABLE_NAME=@t AND COLUMN_NAME='_SyncedAt'",
+                conn);
+            syncedAtCmd.Parameters.AddWithValue("@s", schema);
+            syncedAtCmd.Parameters.AddWithValue("@t", table);
+            var syncedAtExists = (int)(await syncedAtCmd.ExecuteScalarAsync(ct))! > 0;
+
+            if (!syncedAtExists)
+            {
+                await new SqlCommand(
+                    $"ALTER TABLE [{schema}].[{table}] ADD [_SyncedAt] DATETIME2 NOT NULL DEFAULT (GETUTCDATE())",
+                    conn).ExecuteNonQueryAsync(ct);
+                await AddLog(db, runId, "Info", $"Added [_SyncedAt] column to [{schema}].[{table}]", ct);
+            }
             // Ensure all selected source columns exist in destination
             foreach (var f in job.JobFields)
             {
