@@ -22,6 +22,8 @@ public interface ISchemaService
     Task<List<SchemaColumn>> GetDestinationColumnsAsync(DestinationServer server, string database, string tableName);
     Task<bool> TestSourceConnectionAsync(SourceServer server);
     Task<bool> TestDestinationConnectionAsync(DestinationServer server);
+    Task<List<string>> GetDatabasesAsync(string connectionString);
+    Task<(bool ok, string message)> TestConnectionWithDatabaseAsync(string connectionString, string database);
 }
 
 public class SchemaService : ISchemaService
@@ -266,6 +268,44 @@ public class SchemaService : ISchemaService
         {
             _log.LogWarning(ex, "Destination connection test failed for {Name}", server.Name);
             return false;
+        }
+    }
+
+    public async Task<List<string>> GetDatabasesAsync(string connectionString)
+    {
+        var databases = new List<string>();
+        try
+        {
+            await using var conn = new SqlConnection(connectionString);
+            await conn.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT name FROM sys.databases WHERE state_desc = 'ONLINE' ORDER BY name", conn);
+            await using var rdr = await cmd.ExecuteReaderAsync();
+            while (await rdr.ReadAsync()) databases.Add(rdr.GetString(0));
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "GetDatabasesAsync failed");
+        }
+        return databases;
+    }
+
+    public async Task<(bool ok, string message)> TestConnectionWithDatabaseAsync(string connectionString, string database)
+    {
+        try
+        {
+            var b = new SqlConnectionStringBuilder(connectionString) { InitialCatalog = database };
+            await using var conn = new SqlConnection(b.ConnectionString);
+            await conn.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT TOP 1 1 FROM INFORMATION_SCHEMA.TABLES", conn);
+            await cmd.ExecuteScalarAsync();
+            return (true, "Connection successful — read access confirmed.");
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "TestConnectionWithDatabaseAsync failed for database {Database}", database);
+            return (false, $"Connection failed: {ex.Message}");
         }
     }
 }

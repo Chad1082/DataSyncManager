@@ -87,6 +87,43 @@ public class ProjectRunner
         await SendProjectAlertAsync(project, runToUpdate, ct);
     }
 
+    [AutomaticRetry(Attempts = 0)]
+    public async Task RunSingleJobAsync(int jobId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
+        var job = await db.Jobs
+            .Include(j => j.Project).ThenInclude(p => p.SourceServer)
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct)
+            ?? throw new InvalidOperationException($"Job {jobId} not found");
+
+        var projectRun = new ProjectRun
+        {
+            ProjectId = job.ProjectId,
+            Status = RunStatus.Running,
+            StartedAt = DateTime.UtcNow,
+            Notes = $"On-demand: {job.Name}"
+        };
+        db.ProjectRuns.Add(projectRun);
+        await db.SaveChangesAsync(ct);
+
+        _log.LogInformation("Single job '{JobName}' ({JobId}) run {RunId} started", job.Name, jobId, projectRun.Id);
+
+        var jobRun = await _jobExecution.ExecuteJobAsync(jobId, projectRun.Id, ct);
+
+        await using var db2 = await _dbFactory.CreateDbContextAsync(ct);
+        var runToUpdate = await db2.ProjectRuns.FindAsync(new object[] { projectRun.Id }, ct);
+        runToUpdate!.CompletedAt = DateTime.UtcNow;
+        runToUpdate.Status = ct.IsCancellationRequested ? RunStatus.Cancelled
+                           : jobRun.Status == RunStatus.Failed ? RunStatus.Failed
+                           : jobRun.Status == RunStatus.PartialSuccess ? RunStatus.PartialSuccess
+                           : RunStatus.Succeeded;
+        if (ct.IsCancellationRequested) runToUpdate.Notes = $"On-demand: {job.Name} — Cancelled";
+        await db2.SaveChangesAsync(ct);
+
+        _log.LogInformation("Single job '{JobName}' run {RunId} finished: {Status}", job.Name, projectRun.Id, runToUpdate.Status);
+    }
+
     private async Task SendProjectAlertAsync(Project project, ProjectRun run, CancellationToken ct)
     {
         if (project.ProjectAlertOn == AlertOn.None || string.IsNullOrEmpty(project.AlertEmailAddresses))

@@ -142,7 +142,8 @@ public class DestinationServerViewModel
     [Required, MaxLength(150)]
     public string Name { get; set; } = string.Empty;
 
-    [Required, MaxLength(500)]
+    // Built server-side from the builder fields — not entered directly
+    [MaxLength(500)]
     public string ConnectionString { get; set; } = string.Empty;
 
     [MaxLength(200)]
@@ -155,6 +156,18 @@ public class DestinationServerViewModel
     public int RetryDelaySeconds { get; set; } = 30;
 
     public bool IsActive { get; set; } = true;
+
+    // Connection builder fields
+    [Required, MaxLength(500), Display(Name = "Server Address")]
+    public string ServerAddress { get; set; } = string.Empty;
+
+    public bool UseWindowsAuth { get; set; } = true;
+
+    [MaxLength(200), Display(Name = "Username")]
+    public string? SqlUsername { get; set; }
+
+    [Display(Name = "Password")]
+    public string? SqlPassword { get; set; }
 }
 
 // ─────────────────────────────────────────────
@@ -244,7 +257,7 @@ public class JobFormViewModel
     [Required]
     public int DestinationServerId { get; set; }
 
-    [Required]
+    // Populated automatically from the selected DestinationServer.DefaultDatabase
     public string DestinationDatabase { get; set; } = string.Empty;
 
     [Required]

@@ -16,14 +16,17 @@
             </div>
         </div>
 
-        <form asp-action="@(isEdit ? "EditDestination" : "CreateDestination")" method="post">
+        <form asp-action="@(isEdit ? "EditDestination" : "CreateDestination")" method="post" id="destForm">
+            @Html.AntiForgeryToken()
             @if (isEdit) { <input type="hidden" asp-for="Id" /> }
+
+            <div asp-validation-summary="ModelOnly" class="alert alert-danger py-2 small mb-3" role="alert"></div>
 
             <div class="card shadow-sm mb-4">
                 <div class="card-header fw-semibold"><i class="bi bi-info-circle me-2"></i>General</div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label asp-for="Name" class="form-label fw-semibold">Server Name <span class="text-danger">*</span></label>
+                        <label asp-for="Name" class="form-label fw-semibold">Display Name <span class="text-danger">*</span></label>
                         <input asp-for="Name" class="form-control" placeholder="e.g. Reporting Database" />
                         <span asp-validation-for="Name" class="text-danger small"></span>
                     </div>
@@ -33,10 +36,76 @@
             <div class="card shadow-sm mb-4">
                 <div class="card-header fw-semibold"><i class="bi bi-server me-2"></i>Connection</div>
                 <div class="card-body">
-                    <label asp-for="ConnectionString" class="form-label fw-semibold">Connection String <span class="text-danger">*</span></label>
-                    <textarea asp-for="ConnectionString" class="form-control font-monospace" rows="3"
-                              placeholder="Server=.;Database=ReportingDb;Trusted_Connection=True;TrustServerCertificate=True;"></textarea>
-                    <span asp-validation-for="ConnectionString" class="text-danger small"></span>
+
+                    <div class="mb-3">
+                        <label asp-for="ServerAddress" class="form-label fw-semibold">Server Address <span class="text-danger">*</span></label>
+                        <input asp-for="ServerAddress" class="form-control" placeholder="e.g. localhost\SQLEXPRESS  or  192.168.1.10" />
+                        <span asp-validation-for="ServerAddress" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Authentication</label>
+                        <div class="d-flex gap-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="UseWindowsAuth" id="authWindows"
+                                       value="true" @(Model.UseWindowsAuth ? "checked" : "") />
+                                <label class="form-check-label" for="authWindows">Windows Authentication</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="UseWindowsAuth" id="authSql"
+                                       value="false" @(!Model.UseWindowsAuth ? "checked" : "") />
+                                <label class="form-check-label" for="authSql">SQL Server Authentication</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="sqlAuthPanel" class="@(Model.UseWindowsAuth ? "d-none" : "") mb-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label asp-for="SqlUsername" class="form-label fw-semibold">Username</label>
+                                <input asp-for="SqlUsername" class="form-control" placeholder="sa" autocomplete="username" />
+                                <span asp-validation-for="SqlUsername" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-6">
+                                <label asp-for="SqlPassword" class="form-label fw-semibold">Password</label>
+                                <input asp-for="SqlPassword" class="form-control" type="password" autocomplete="current-password" />
+                                @if (isEdit)
+                                {
+                                    <div class="form-text">Leave blank to keep the existing password.</div>
+                                }
+                                <span asp-validation-for="SqlPassword" class="text-danger small"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Database <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <select id="databaseSelect" class="form-select">
+                                @if (!string.IsNullOrEmpty(Model.DefaultDatabase))
+                                {
+                                    <option value="@Model.DefaultDatabase" selected>@Model.DefaultDatabase</option>
+                                }
+                                else
+                                {
+                                    <option value="">— enter server details, then click Load —</option>
+                                }
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary" id="loadDbsBtn">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Load
+                            </button>
+                        </div>
+                        <input asp-for="DefaultDatabase" type="hidden" id="defaultDatabaseHidden" />
+                        <span asp-validation-for="DefaultDatabase" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-1">
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="testConnBtn">
+                            <i class="bi bi-plug me-1"></i>Test Connection
+                        </button>
+                        <span id="testConnResult" class="ms-2 small"></span>
+                    </div>
+
                 </div>
             </div>
 
@@ -66,4 +135,92 @@
 
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+    const isEdit = @(isEdit ? "true" : "false");
+
+    // Auth type toggle
+    document.querySelectorAll('input[name="UseWindowsAuth"]').forEach(r =>
+        r.addEventListener('change', function () {
+            document.getElementById('sqlAuthPanel').classList.toggle('d-none', this.value === 'true');
+        })
+    );
+
+    function getProbePayload(includeDb) {
+        const server    = document.getElementById('ServerAddress').value.trim();
+        const useWin    = document.querySelector('input[name="UseWindowsAuth"]:checked').value === 'true';
+        const username  = document.getElementById('SqlUsername')?.value?.trim() || null;
+        const password  = document.getElementById('SqlPassword')?.value || null;
+        const database  = includeDb ? (document.getElementById('defaultDatabaseHidden').value || null) : null;
+        return { server, useWindowsAuth: useWin, username, password, database };
+    }
+
+    async function postProbe(url, data) {
+        const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+            body: JSON.stringify(data)
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return resp.json();
+    }
+
+    document.getElementById('loadDbsBtn').addEventListener('click', async function () {
+        const payload = getProbePayload(false);
+        if (!payload.server) { alert('Enter a server address first.'); return; }
+        if (!payload.useWindowsAuth && !payload.username) { alert('Enter a username for SQL Server authentication.'); return; }
+
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+        try {
+            const databases = await postProbe('/Servers/ProbeDestinationDatabases', payload);
+            const sel = document.getElementById('databaseSelect');
+            const current = document.getElementById('defaultDatabaseHidden').value;
+            sel.innerHTML = '<option value="">— select a database —</option>';
+            if (!databases.length) {
+                sel.innerHTML = '<option value="">No databases found — check permissions</option>';
+            } else {
+                databases.forEach(db => {
+                    const opt = document.createElement('option');
+                    opt.value = db; opt.textContent = db;
+                    if (db === current) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+            }
+        } catch (e) {
+            alert('Failed to load databases: ' + e.message);
+        } finally {
+            this.disabled = false;
+            this.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Load';
+        }
+    });
+
+    document.getElementById('databaseSelect').addEventListener('change', function () {
+        document.getElementById('defaultDatabaseHidden').value = this.value;
+        document.getElementById('testConnResult').textContent = '';
+    });
+
+    document.getElementById('testConnBtn').addEventListener('click', async function () {
+        const payload = getProbePayload(true);
+        if (!payload.server) { alert('Enter a server address first.'); return; }
+        if (!payload.database) { alert('Select a database first.'); return; }
+
+        const result = document.getElementById('testConnResult');
+        this.disabled = true;
+        result.className = 'ms-2 small text-muted';
+        result.textContent = 'Testing…';
+        try {
+            const data = await postProbe('/Servers/ProbeDestinationConnection', payload);
+            result.className = 'ms-2 small ' + (data.ok ? 'text-success' : 'text-danger');
+            result.innerHTML = (data.ok
+                ? '<i class="bi bi-check-circle me-1"></i>'
+                : '<i class="bi bi-x-circle me-1"></i>') + data.message;
+        } catch (e) {
+            result.className = 'ms-2 small text-danger';
+            result.textContent = 'Error: ' + e.message;
+        } finally {
+            this.disabled = false;
+        }
+    });
+    </script>
 }

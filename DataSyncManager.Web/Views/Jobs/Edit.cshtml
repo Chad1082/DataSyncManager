@@ -41,9 +41,10 @@
 
             <!-- Field selection -->
             <div class="card shadow-sm mb-4">
-                <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-list-check me-2"></i>Fields</span>
-                    <div class="d-flex gap-2">
+                <div class="card-header fw-semibold d-flex justify-content-between align-items-center gap-2">
+                    <span class="text-nowrap"><i class="bi bi-list-check me-2"></i>Fields</span>
+                    <input type="text" class="form-control form-control-sm" id="fieldsSearch" placeholder="Search fields…" />
+                    <div class="d-flex gap-2 flex-shrink-0">
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAll(true)">All</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAll(false)">None</button>
                         <button type="button" class="btn btn-sm btn-outline-primary" onclick="loadFields()">
@@ -91,14 +92,21 @@
                                 <span asp-validation-for="SyncStartDate" class="text-danger small"></span>
                             </div>
                             <div class="col-md-5">
-                                <label asp-for="UniqueKeyFields" class="form-label fw-semibold">Unique Key Fields</label>
-                                <input asp-for="UniqueKeyFields" class="form-control"
-                                       placeholder="id, tenant_id" />
-                                <div class="form-text">Comma-separated field names that uniquely identify a row.</div>
+                                <label class="form-label fw-semibold">Unique Key Fields</label>
+                                <input type="text" class="form-control form-control-sm mb-1" id="uniqueKeySearch" placeholder="Search fields…" />
+                                <select id="uniqueKeySelect" class="form-select" multiple size="4">
+                                    <option disabled class="text-muted fst-italic">Load fields first</option>
+                                </select>
+                                <input asp-for="UniqueKeyFields" type="hidden" />
+                                <div class="form-text">Hold <kbd>Ctrl</kbd> / <kbd>Cmd</kbd> to select multiple. Uniquely identifies a row.</div>
                             </div>
                             <div class="col-md-4">
-                                <label asp-for="ChangeDateField" class="form-label fw-semibold">Change Date Field</label>
-                                <input asp-for="ChangeDateField" class="form-control" placeholder="updated_at" />
+                                <label class="form-label fw-semibold">Change Date Field</label>
+                                <input type="text" class="form-control form-control-sm mb-1" id="changeDateSearch" placeholder="Search fields…" />
+                                <select id="changeDateSelect" class="form-select">
+                                    <option value="">— Load fields first —</option>
+                                </select>
+                                <input asp-for="ChangeDateField" type="hidden" />
                                 <div class="form-text">Field used to detect changed rows.</div>
                             </div>
                             <div class="col-md-3">
@@ -128,9 +136,17 @@
                     <div class="col-md-5">
                         <label asp-for="DestinationServerId" class="form-label fw-semibold">Destination Server</label>
                         <select asp-for="DestinationServerId" asp-items="Model.AvailableDestinationServers"
-                                class="form-select">
+                                class="form-select" id="destServerSelect">
                             <option value="">-- Select Server --</option>
                         </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-semibold">Database</label>
+                        <div id="destDatabaseDisplay" class="form-control-plaintext fw-semibold text-primary ps-1">
+                            @(Model.DestinationDatabase.Length > 0 ? Model.DestinationDatabase : "— select a server —")
+                        </div>
+                        <input asp-for="DestinationDatabase" type="hidden" id="destDatabaseHidden" />
+                        <div class="form-text">Set on the destination server configuration.</div>
                     </div>
                     <div class="col-md-5">
                         <label asp-for="DestinationTable" class="form-label fw-semibold">Destination Table</label>
@@ -219,6 +235,19 @@
     const sourceServerId = '@Model.SourceServerId';
     const sourceTable    = '@Model.SourceTable';
     let savedFields = [];
+    let allColOptions = [];
+    let selectedUniqueKeys = new Set(
+        (document.getElementById('UniqueKeyFields').value || '').split(',').map(s => s.trim()).filter(Boolean)
+    );
+    let selectedChangeDate = document.getElementById('ChangeDateField').value || '';
+    const destDatabases = { @Html.Raw(string.Join(",", Model.AvailableDestinations.Select(d => $"{d.Id}:'{d.DefaultDatabase ?? ""}'"))) };
+
+    document.getElementById('destServerSelect').addEventListener('change', function () {
+        const db = destDatabases[this.value] || '';
+        document.getElementById('destDatabaseHidden').value = db;
+        document.getElementById('destDatabaseDisplay').textContent = db || '— no default database configured —';
+        buildSqlPreview();
+    });
 
     try {
         const raw = document.getElementById('selectedFieldsJson').value;
@@ -273,10 +302,52 @@
         });
         table.appendChild(tbody);
         container.appendChild(table);
+
+        // Populate UniqueKey and ChangeDate selects
+        allColOptions = cols;
+        selectedUniqueKeys = new Set(
+            (document.getElementById('UniqueKeyFields').value || '').split(',').map(s => s.trim()).filter(Boolean)
+        );
+        selectedChangeDate = document.getElementById('ChangeDateField').value || '';
+        document.getElementById('uniqueKeySearch').value = '';
+        document.getElementById('changeDateSearch').value = '';
+        renderUniqueKeyOptions('');
+        renderChangeDateOptions('');
+
+        // Re-apply fields search if active
+        const fq = (document.getElementById('fieldsSearch').value || '').toLowerCase();
+        if (fq) {
+            container.querySelectorAll('tbody tr').forEach(row => {
+                const name = (row.querySelector('.field-check')?.dataset.field || '').toLowerCase();
+                row.style.display = (!fq || name.includes(fq)) ? '' : 'none';
+            });
+        }
     }
 
     function selectAll(val) {
         document.querySelectorAll('.field-check').forEach(c => c.checked = val);
+    }
+
+    function renderUniqueKeyOptions(query) {
+        const sel = document.getElementById('uniqueKeySelect');
+        sel.innerHTML = '';
+        allColOptions.filter(c => !query || c.name.toLowerCase().includes(query)).forEach(col => {
+            const o = document.createElement('option');
+            o.value = col.name; o.textContent = col.name;
+            o.selected = selectedUniqueKeys.has(col.name);
+            sel.appendChild(o);
+        });
+    }
+
+    function renderChangeDateOptions(query) {
+        const sel = document.getElementById('changeDateSelect');
+        sel.innerHTML = '<option value="">— none —</option>';
+        allColOptions.filter(c => !query || c.name.toLowerCase().includes(query)).forEach(col => {
+            const o = document.createElement('option');
+            o.value = col.name; o.textContent = `${col.name}  (${col.dataType})`;
+            o.selected = col.name === selectedChangeDate;
+            sel.appendChild(o);
+        });
     }
 
     document.getElementById('jobForm').addEventListener('submit', function() {
@@ -293,6 +364,8 @@
             });
         });
         document.getElementById('selectedFieldsJson').value = JSON.stringify(fields);
+        document.getElementById('UniqueKeyFields').value = [...selectedUniqueKeys].join(', ');
+        document.getElementById('ChangeDateField').value = selectedChangeDate;
     });
 
     document.querySelectorAll('input[name="SyncMode"]').forEach(r => {
@@ -388,8 +461,32 @@
     // Hook all inputs that affect the preview
     document.querySelectorAll('input[name="SyncMode"]').forEach(r => r.addEventListener('change', buildSqlPreview));
     document.getElementById('DestinationTable').addEventListener('input', buildSqlPreview);
-    document.getElementById('UniqueKeyFields').addEventListener('input', buildSqlPreview);
-    document.getElementById('ChangeDateField').addEventListener('input', buildSqlPreview);
+    document.getElementById('uniqueKeySelect').addEventListener('change', function() {
+        [...this.options].forEach(o => {
+            if (o.selected) selectedUniqueKeys.add(o.value);
+            else selectedUniqueKeys.delete(o.value);
+        });
+        document.getElementById('UniqueKeyFields').value = [...selectedUniqueKeys].join(', ');
+        buildSqlPreview();
+    });
+    document.getElementById('changeDateSelect').addEventListener('change', function() {
+        selectedChangeDate = this.value;
+        document.getElementById('ChangeDateField').value = this.value;
+        buildSqlPreview();
+    });
+    document.getElementById('fieldsSearch').addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        document.querySelectorAll('#fieldsContainer tbody tr').forEach(row => {
+            const name = (row.querySelector('.field-check')?.dataset.field || '').toLowerCase();
+            row.style.display = (!q || name.includes(q)) ? '' : 'none';
+        });
+    });
+    document.getElementById('uniqueKeySearch').addEventListener('input', function() {
+        renderUniqueKeyOptions(this.value.toLowerCase());
+    });
+    document.getElementById('changeDateSearch').addEventListener('input', function() {
+        renderChangeDateOptions(this.value.toLowerCase());
+    });
     document.getElementById('DaysPerBatch').addEventListener('input', buildSqlPreview);
     document.getElementById('fieldsContainer').addEventListener('change', buildSqlPreview);
     document.querySelector('[name="SyncStartDate"]')?.addEventListener('change', buildSqlPreview);

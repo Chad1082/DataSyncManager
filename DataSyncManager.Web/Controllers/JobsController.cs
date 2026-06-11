@@ -1,7 +1,9 @@
 using DataSyncManager.Web.Data;
+using DataSyncManager.Web.Jobs;
 using DataSyncManager.Web.Models;
 using DataSyncManager.Web.Services;
 using DataSyncManager.Web.ViewModels;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,11 +16,13 @@ public class JobsController : Controller
 {
     private readonly ApplicationDbContext _db;
     private readonly ISchemaService _schema;
+    private readonly IBackgroundJobClient _bgJobs;
 
-    public JobsController(ApplicationDbContext db, ISchemaService schema)
+    public JobsController(ApplicationDbContext db, ISchemaService schema, IBackgroundJobClient bgJobs)
     {
         _db = db;
         _schema = schema;
+        _bgJobs = bgJobs;
     }
 
     // ── Create ───────────────────────────────────────
@@ -47,6 +51,16 @@ public class JobsController : Controller
         ModelState.Remove("ProjectSourceServer");
         ModelState.Remove("AvailableDestinations");
         ModelState.Remove("ProjectName");
+        ModelState.Remove("DestinationDatabase");
+
+        // Auto-fill DestinationDatabase from the selected server's DefaultDatabase
+        if (string.IsNullOrEmpty(vm.DestinationDatabase) && vm.DestinationServerId > 0)
+        {
+            var dest = await _db.DestinationServers.FindAsync(vm.DestinationServerId);
+            vm.DestinationDatabase = dest?.DefaultDatabase ?? "";
+        }
+        if (string.IsNullOrEmpty(vm.DestinationDatabase))
+            ModelState.AddModelError("DestinationDatabase", "The selected destination server has no default database configured.");
 
         if (vm.SyncMode == SyncMode.Upsert && !vm.SyncStartDate.HasValue)
             ModelState.AddModelError(nameof(vm.SyncStartDate), "A start date is required for Upsert jobs.");
@@ -148,6 +162,16 @@ public class JobsController : Controller
         ModelState.Remove("ProjectSourceServer");
         ModelState.Remove("AvailableDestinations");
         ModelState.Remove("ProjectName");
+        ModelState.Remove("DestinationDatabase");
+
+        // Auto-fill DestinationDatabase from the selected server's DefaultDatabase
+        if (string.IsNullOrEmpty(vm.DestinationDatabase) && vm.DestinationServerId > 0)
+        {
+            var dest = await _db.DestinationServers.FindAsync(vm.DestinationServerId);
+            vm.DestinationDatabase = dest?.DefaultDatabase ?? "";
+        }
+        if (string.IsNullOrEmpty(vm.DestinationDatabase))
+            ModelState.AddModelError("DestinationDatabase", "The selected destination server has no default database configured.");
 
         if (!ModelState.IsValid)
         {
@@ -186,6 +210,19 @@ public class JobsController : Controller
         await SaveFieldsAsync(job.Id, vm.SelectedFieldsJson);
 
         TempData["Success"] = "Job updated.";
+        return RedirectToAction("Details", "Projects", new { id = job.ProjectId });
+    }
+
+    // ── Run Now ──────────────────────────────────────
+
+    [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
+    public async Task<IActionResult> RunNow(int id)
+    {
+        var job = await _db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
+        if (job is null) return NotFound();
+
+        _bgJobs.Enqueue<ProjectRunner>(r => r.RunSingleJobAsync(id, CancellationToken.None));
+        TempData["Success"] = $"Job '{job.Name}' queued for immediate execution.";
         return RedirectToAction("Details", "Projects", new { id = job.ProjectId });
     }
 

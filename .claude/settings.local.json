@@ -3,7 +3,8 @@
     "allow": [
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Chad\\\\Downloads\\\\DataSyncManager\\\\DataSyncManager\" | Format-Table Name, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}})",
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Chad\\\\Downloads\\\\DataSyncManager\\\\DataSyncManager\\\\DataSyncManager.Web\\\\Views\" | Select-Object Name, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}})",
-      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Chad\\\\Downloads\\\\DataSyncManager\\\\DataSyncManager\\\\DataSyncManager.Web\\\\wwwroot\" | Select-Object Name, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}})"
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\Chad\\\\Downloads\\\\DataSyncManager\\\\DataSyncManager\\\\DataSyncManager.Web\\\\wwwroot\" | Select-Object Name, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}})",
+      "PowerShell(dotnet build *)"
     ]
   }
 }

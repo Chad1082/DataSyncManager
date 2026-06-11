@@ -108,10 +108,20 @@
                         }
                         else { <span class="text-muted">—</span> }
                     </td>
-                    <td>
+                    <td class="text-nowrap">
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <form asp-controller="Jobs" asp-action="RunNow" asp-route-id="@job.Id" method="post" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <button class="btn btn-sm btn-success" title="Run this job now"
+                                        @(!job.IsActive ? "disabled" : "")>
+                                    <i class="bi bi-play-fill"></i>
+                                </button>
+                            </form>
+                        }
                         @if (User.IsInRole("Admin") || User.IsInRole("ReadOnly"))
                         {
-                            <a asp-controller="Jobs" asp-action="Edit" asp-route-id="@job.Id" class="btn btn-sm btn-outline-secondary">
+                            <a asp-controller="Jobs" asp-action="Edit" asp-route-id="@job.Id" class="btn btn-sm btn-outline-secondary ms-1">
                                 <i class="bi bi-pencil"></i>
                             </a>
                         }

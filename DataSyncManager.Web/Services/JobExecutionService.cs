@@ -367,7 +367,8 @@ public class JobExecutionService : IJobExecutionService
                     await using var conn = new SqlConnection(csb.ConnectionString);
                     await conn.OpenAsync(ct);
 
-                    await new SqlCommand($"SELECT TOP 0 * INTO {staging} FROM [{schema}].[{table}]", conn)
+                    var stagingCols = string.Join(", ", job.JobFields.Select(f => $"[{f.DestinationFieldName ?? f.SourceFieldName}]"));
+                    await new SqlCommand($"SELECT TOP 0 {stagingCols} INTO {staging} FROM [{schema}].[{table}]", conn)
                         .ExecuteNonQueryAsync(ct);
 
                     using var bulk = new SqlBulkCopy(conn) { DestinationTableName = staging };

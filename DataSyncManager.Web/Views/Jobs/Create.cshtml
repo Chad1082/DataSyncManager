@@ -65,6 +65,7 @@
                     <h6 class="text-muted text-uppercase fw-bold mb-3">Source</h6>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Source Table / Endpoint *</label>
+                        <input type="text" class="form-control form-control-sm mb-1" id="sourceTableSearch" placeholder="Search tables…" />
                         <div class="input-group">
                             <select id="sourceTableSelect" class="form-select">
                                 <option value="">— loading tables… —</option>
@@ -85,14 +86,18 @@
                     <h6 class="text-muted text-uppercase fw-bold mb-3">Destination</h6>
                     <div class="mb-3">
                         <label asp-for="DestinationServerId" class="form-label fw-semibold">Destination Server *</label>
-                        <select asp-for="DestinationServerId" class="form-select"
+                        <select asp-for="DestinationServerId" class="form-select" id="destServerSelect"
                                 asp-items="@(new SelectList(Model.AvailableDestinations, "Id", "Name"))">
                             <option value="">— select —</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label asp-for="DestinationDatabase" class="form-label fw-semibold">Database *</label>
-                        <input asp-for="DestinationDatabase" class="form-control" placeholder="TargetDatabase" />
+                        <label class="form-label fw-semibold">Database</label>
+                        <div id="destDatabaseDisplay" class="form-control-plaintext fw-semibold text-primary ps-1">
+                            @(Model.DestinationDatabase.Length > 0 ? Model.DestinationDatabase : "— select a server —")
+                        </div>
+                        <input asp-for="DestinationDatabase" type="hidden" id="destDatabaseHidden" />
+                        <div class="form-text">Set on the destination server configuration.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Destination Table *</label>
@@ -105,6 +110,10 @@
                                 <i class="bi bi-arrow-clockwise"></i>
                             </button>
                         </div>
+                        <input type="text" id="newTableNameInput" class="form-control mt-2"
+                               placeholder="New table name (e.g. dbo.MyTable)"
+                               value="@Model.DestinationTable" />
+                        <span asp-validation-for="DestinationTable" class="text-danger small"></span>
                     </div>
                     <div class="mb-3 form-check form-switch">
                         <input asp-for="CreateDestinationTableIfMissing" class="form-check-input" type="checkbox" />
@@ -142,6 +151,7 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Unique Key Fields</label>
+                            <input type="text" class="form-control form-control-sm mb-1" id="uniqueKeySearch" placeholder="Search fields…" />
                             <select id="uniqueKeySelect" class="form-select" multiple size="4">
                                 <option disabled class="text-muted fst-italic">Load a source table first</option>
                             </select>
@@ -150,6 +160,7 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Change Detection Date Field</label>
+                            <input type="text" class="form-control form-control-sm mb-1" id="changeDateSearch" placeholder="Search fields…" />
                             <select id="changeDateSelect" class="form-select">
                                 <option value="">— Load a source table first —</option>
                             </select>
@@ -200,9 +211,10 @@
         <!-- RIGHT: Field Picker -->
         <div class="col-lg-5">
             <div class="card border-0 shadow-sm sticky-top" style="top:70px;">
-                <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
-                    <span><i class="bi bi-list-columns me-1 text-primary"></i>Fields</span>
-                    <div class="btn-group btn-group-sm">
+                <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center gap-2">
+                    <span class="text-nowrap"><i class="bi bi-list-columns me-1 text-primary"></i>Fields</span>
+                    <input type="text" class="form-control form-control-sm" id="fieldsSearch" placeholder="Search fields…" />
+                    <div class="btn-group btn-group-sm flex-shrink-0">
                         <button type="button" class="btn btn-outline-secondary" id="selectAllBtn">All</button>
                         <button type="button" class="btn btn-outline-secondary" id="deselectAllBtn">None</button>
                     </div>
@@ -267,21 +279,31 @@
     <script>
         const sourceServerId = @Model.ProjectSourceServer?.Id;
         let selectedFields = @Html.Raw(Model.SelectedFieldsJson ?? "[]");
+        let allSourceTables = [];
+        let allColOptions = [];
+        let selectedUniqueKeys = new Set();
+        let selectedChangeDate = '';
+        const destDatabases = { @Html.Raw(string.Join(",", Model.AvailableDestinations.Select(d => $"{d.Id}:'{d.DefaultDatabase ?? ""}'"))) };
 
         // ── Source table loading ──────────────────────────
 
         async function loadSourceTables() {
             const r = await fetch(`/Servers/GetSourceTables?serverId=${sourceServerId}`);
-            const tables = await r.json();
+            allSourceTables = await r.json();
+            filterSourceTables(document.getElementById('sourceTableSearch').value.toLowerCase());
+            if ('@Model.SourceTable') loadSourceColumns('@Model.SourceTable');
+        }
+
+        function filterSourceTables(query) {
             const sel = document.getElementById('sourceTableSelect');
+            const current = document.getElementById('sourceTableHidden').value || '@Model.SourceTable';
             sel.innerHTML = '<option value="">— Select table —</option>';
-            tables.forEach(t => {
+            allSourceTables.filter(t => !query || t.toLowerCase().includes(query)).forEach(t => {
                 const opt = document.createElement('option');
                 opt.value = t; opt.textContent = t;
-                if (t === '@Model.SourceTable') opt.selected = true;
+                if (t === current) opt.selected = true;
                 sel.appendChild(opt);
             });
-            if ('@Model.SourceTable') loadSourceColumns('@Model.SourceTable');
         }
 
         async function loadSourceColumns(tableName) {
@@ -315,28 +337,36 @@
             updateFieldCount();
 
             // ── Populate unique key and change date selects ──
-            const uniqueSel = document.getElementById('uniqueKeySelect');
-            const dateSel   = document.getElementById('changeDateSelect');
+            allColOptions = cols;
+            selectedUniqueKeys = new Set(
+                document.getElementById('UniqueKeyFields').value.split(',').map(s => s.trim()).filter(Boolean)
+            );
+            selectedChangeDate = document.getElementById('ChangeDateField').value;
+            document.getElementById('uniqueKeySearch').value = '';
+            document.getElementById('changeDateSearch').value = '';
+            renderUniqueKeyOptions('');
+            renderChangeDateOptions('');
+        }
 
-            const currentKeys = document.getElementById('UniqueKeyFields').value
-                .split(',').map(s => s.trim()).filter(Boolean);
-            const currentDate = document.getElementById('ChangeDateField').value;
+        function renderUniqueKeyOptions(query) {
+            const sel = document.getElementById('uniqueKeySelect');
+            sel.innerHTML = '';
+            allColOptions.filter(c => !query || c.name.toLowerCase().includes(query)).forEach(col => {
+                const o = document.createElement('option');
+                o.value = col.name; o.textContent = col.name;
+                o.selected = selectedUniqueKeys.has(col.name);
+                sel.appendChild(o);
+            });
+        }
 
-            uniqueSel.innerHTML = '';
-            dateSel.innerHTML   = '<option value="">— none —</option>';
-
-            cols.forEach(col => {
-                const o1 = document.createElement('option');
-                o1.value = col.name;
-                o1.textContent = col.name;
-                o1.selected = currentKeys.includes(col.name);
-                uniqueSel.appendChild(o1);
-
-                const o2 = document.createElement('option');
-                o2.value = col.name;
-                o2.textContent = `${col.name}  (${col.dataType})`;
-                o2.selected = col.name === currentDate;
-                dateSel.appendChild(o2);
+        function renderChangeDateOptions(query) {
+            const sel = document.getElementById('changeDateSelect');
+            sel.innerHTML = '<option value="">— none —</option>';
+            allColOptions.filter(c => !query || c.name.toLowerCase().includes(query)).forEach(col => {
+                const o = document.createElement('option');
+                o.value = col.name; o.textContent = `${col.name}  (${col.dataType})`;
+                o.selected = col.name === selectedChangeDate;
+                sel.appendChild(o);
             });
         }
 
@@ -348,7 +378,16 @@
 
         document.getElementById('sourceTableSelect').addEventListener('change', function () {
             document.getElementById('sourceTableHidden').value = this.value;
-            if (this.value) loadSourceColumns(this.value);
+            if (this.value) {
+                loadSourceColumns(this.value);
+                // Default new table name to source table name if the user hasn't typed one
+                const nameInput = document.getElementById('newTableNameInput');
+                if (document.getElementById('destTableSelect').value === '__new__' && !nameInput.dataset.userEdited) {
+                    nameInput.value = this.value;
+                    syncDestTable();
+                    buildSqlPreview();
+                }
+            }
         });
 
         document.getElementById('loadTablesBtn').addEventListener('click', loadSourceTables);
@@ -364,11 +403,10 @@
         // ── Destination table loading ─────────────────────
 
         async function loadDestTables() {
-            const serverId = document.getElementById('DestinationServerId').value;
-            const database = document.getElementById('DestinationDatabase').value;
-            if (!serverId || !database) { alert('Select a destination server and enter the database name first.'); return; }
+            const serverId = document.getElementById('destServerSelect').value;
+            if (!serverId) { alert('Select a destination server first.'); return; }
 
-            const r = await fetch(`/Servers/GetDestinationTables?serverId=${serverId}&database=${encodeURIComponent(database)}`);
+            const r = await fetch(`/Servers/GetDestinationTables?serverId=${serverId}`);
             const tables = await r.json();
             const sel = document.getElementById('destTableSelect');
             sel.innerHTML = '<option value="__new__">— Create new table —</option>';
@@ -380,10 +418,43 @@
             });
         }
 
+        document.getElementById('destServerSelect').addEventListener('change', function () {
+            const db = destDatabases[this.value] || '';
+            document.getElementById('destDatabaseHidden').value = db;
+            document.getElementById('destDatabaseDisplay').textContent = db || '— no default database configured —';
+            loadDestTables();
+        });
+
+        function syncDestTable() {
+            const sel = document.getElementById('destTableSelect');
+            const isNew = sel.value === '__new__';
+            const nameInput = document.getElementById('newTableNameInput');
+            nameInput.style.display = isNew ? '' : 'none';
+            document.getElementById('destTableHidden').value = isNew ? nameInput.value.trim() : sel.value;
+        }
+
         document.getElementById('destTableSelect').addEventListener('change', function () {
-            document.getElementById('destTableHidden').value = this.value === '__new__' ? '' : this.value;
+            const nameInput = document.getElementById('newTableNameInput');
+            if (this.value === '__new__' && !nameInput.dataset.userEdited) {
+                const sourceTable = document.getElementById('sourceTableSelect').value;
+                if (sourceTable) {
+                    nameInput.value = sourceTable;
+                }
+            }
+            syncDestTable();
+            buildSqlPreview();
+        });
+        document.getElementById('newTableNameInput').addEventListener('input', function () {
+            this.dataset.userEdited = this.value ? 'true' : '';
+            if (document.getElementById('destTableSelect').value === '__new__') {
+                document.getElementById('destTableHidden').value = this.value.trim();
+                buildSqlPreview();
+            }
         });
         document.getElementById('loadDestTablesBtn').addEventListener('click', loadDestTables);
+
+        // Set initial state — on page load destTableSelect starts at __new__
+        syncDestTable();
 
         // ── Sync mode toggle ──────────────────────────────
 
@@ -395,7 +466,17 @@
 
         // ── Form submit: serialise all values before posting ─
 
-        document.getElementById('jobForm').addEventListener('submit', function () {
+        document.getElementById('jobForm').addEventListener('submit', function (e) {
+            // Sync destination table hidden field
+            syncDestTable();
+            if (!document.getElementById('destTableHidden').value) {
+                e.preventDefault();
+                document.getElementById('newTableNameInput').focus();
+                document.getElementById('newTableNameInput').classList.add('is-invalid');
+                return;
+            }
+            document.getElementById('newTableNameInput').classList.remove('is-invalid');
+
             // Serialise selected fields
             const fields = [...document.querySelectorAll('.field-check')].map(cb => ({
                 sourceFieldName: cb.dataset.name,
@@ -410,19 +491,11 @@
             // Source table
             document.getElementById('sourceTableHidden').value = document.getElementById('sourceTableSelect').value;
 
-            // Destination table
-            const destSel = document.getElementById('destTableSelect').value;
-            if (destSel && destSel !== '__new__')
-                document.getElementById('destTableHidden').value = destSel;
-
-            // Unique key fields — convert multi-select to comma-separated string
-            const keys = [...document.querySelectorAll('#uniqueKeySelect option:checked')]
-                .map(o => o.value).join(', ');
-            document.getElementById('UniqueKeyFields').value = keys;
+            // Unique key fields
+            document.getElementById('UniqueKeyFields').value = [...selectedUniqueKeys].join(', ');
 
             // Change detection date field
-            document.getElementById('ChangeDateField').value =
-                document.getElementById('changeDateSelect').value;
+            document.getElementById('ChangeDateField').value = selectedChangeDate;
         });
 
         // ── SQL Preview ───────────────────────────────────
@@ -433,9 +506,8 @@
             const fields         = [...document.querySelectorAll('.field-check:checked')].map(cb => cb.dataset.name);
             const destRaw        = document.getElementById('destTableHidden').value ||
                                    (() => { const v = document.getElementById('destTableSelect').value; return v !== '__new__' ? v : ''; })();
-            const destDb         = document.getElementById('DestinationDatabase').value;
-            const changeDateField = document.getElementById('ChangeDateField').value ||
-                                    document.getElementById('changeDateSelect').value;
+            const destDb         = document.getElementById('destDatabaseHidden').value;
+            const changeDateField = selectedChangeDate;
             const daysPerBatch   = parseFloat(document.getElementById('DaysPerBatch').value) || 1;
             const syncStartDate  = document.getElementById('syncStartDateInput')?.value;
 
@@ -474,7 +546,7 @@
                 destSql = '-- Step 1: clear existing data\nTRUNCATE TABLE ' + fullRef + ';\n\n'
                         + '-- Step 2: bulk insert all source rows\n-- (SqlBulkCopy → ' + fullRef + ')';
             } else {
-                const uniqueKeys = [...document.querySelectorAll('#uniqueKeySelect option:checked')].map(o => o.value);
+                const uniqueKeys = [...selectedUniqueKeys];
                 if (!fields.length) {
                     destSql = '-- Select fields above';
                 } else if (!uniqueKeys.length) {
@@ -514,12 +586,38 @@
         // Hook all inputs that affect the preview
         document.getElementById('syncModeSelect').addEventListener('change', buildSqlPreview);
         document.getElementById('DaysPerBatch').addEventListener('input', buildSqlPreview);
-        document.getElementById('DestinationDatabase').addEventListener('input', buildSqlPreview);
+        document.getElementById('destDatabaseHidden').addEventListener('change', buildSqlPreview);
+        document.getElementById('destServerSelect').addEventListener('change', buildSqlPreview);
         document.getElementById('destTableSelect').addEventListener('change', buildSqlPreview);
-        document.getElementById('destTableHidden').addEventListener('change', buildSqlPreview);
         document.getElementById('fieldsList').addEventListener('change', buildSqlPreview);
-        document.getElementById('uniqueKeySelect').addEventListener('change', buildSqlPreview);
-        document.getElementById('changeDateSelect').addEventListener('change', buildSqlPreview);
+        document.getElementById('uniqueKeySelect').addEventListener('change', function() {
+            [...this.options].forEach(o => {
+                if (o.selected) selectedUniqueKeys.add(o.value);
+                else selectedUniqueKeys.delete(o.value);
+            });
+            buildSqlPreview();
+        });
+        document.getElementById('changeDateSelect').addEventListener('change', function() {
+            selectedChangeDate = this.value;
+            buildSqlPreview();
+        });
+
+        document.getElementById('sourceTableSearch').addEventListener('input', function() {
+            filterSourceTables(this.value.toLowerCase());
+        });
+        document.getElementById('fieldsSearch').addEventListener('input', function() {
+            const q = this.value.toLowerCase();
+            document.querySelectorAll('#fieldsList .list-group-item').forEach(item => {
+                const name = (item.querySelector('[data-name]')?.dataset.name || '').toLowerCase();
+                item.style.display = (!q || name.includes(q)) ? '' : 'none';
+            });
+        });
+        document.getElementById('uniqueKeySearch').addEventListener('input', function() {
+            renderUniqueKeyOptions(this.value.toLowerCase());
+        });
+        document.getElementById('changeDateSearch').addEventListener('input', function() {
+            renderChangeDateOptions(this.value.toLowerCase());
+        });
         document.getElementById('syncStartDateInput')?.addEventListener('change', buildSqlPreview);
 
         // ── Init ──────────────────────────────────────────

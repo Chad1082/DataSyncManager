@@ -4,6 +4,7 @@ using DataSyncManager.Web.Services;
 using DataSyncManager.Web.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace DataSyncManager.Web.Controllers;
@@ -148,12 +149,18 @@ public class ServersController : Controller
     [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateDestination(DestinationServerViewModel vm)
     {
+        ModelState.Remove("ConnectionString");
+        if (!vm.UseWindowsAuth && string.IsNullOrEmpty(vm.SqlPassword))
+            ModelState.AddModelError("SqlPassword", "Password is required for SQL Server Authentication.");
+        if (string.IsNullOrEmpty(vm.DefaultDatabase))
+            ModelState.AddModelError("DefaultDatabase", "Select a database.");
+
         if (!ModelState.IsValid) return View(vm);
 
         var server = new DestinationServer
         {
             Name = vm.Name,
-            ConnectionString = vm.ConnectionString,
+            ConnectionString = BuildDestinationConnectionString(vm.ServerAddress, vm.UseWindowsAuth, vm.SqlUsername, vm.SqlPassword),
             DefaultDatabase = vm.DefaultDatabase,
             RetryCount = vm.RetryCount,
             RetryDelaySeconds = vm.RetryDelaySeconds,
@@ -173,25 +180,72 @@ public class ServersController : Controller
         var s = await _db.DestinationServers.FindAsync(id);
         if (s is null) return NotFound();
 
-        return View(new DestinationServerViewModel
+        var vm = new DestinationServerViewModel
         {
             Id = s.Id, Name = s.Name, ConnectionString = s.ConnectionString,
             DefaultDatabase = s.DefaultDatabase, RetryCount = s.RetryCount,
-            RetryDelaySeconds = s.RetryDelaySeconds, IsActive = s.IsActive
-        });
+            RetryDelaySeconds = s.RetryDelaySeconds, IsActive = s.IsActive,
+            UseWindowsAuth = true
+        };
+
+        if (!string.IsNullOrEmpty(s.ConnectionString))
+        {
+            try
+            {
+                var csb = new SqlConnectionStringBuilder(s.ConnectionString);
+                vm.ServerAddress = csb.DataSource;
+                vm.UseWindowsAuth = csb.IntegratedSecurity;
+                vm.SqlUsername = string.IsNullOrEmpty(csb.UserID) ? null : csb.UserID;
+            }
+            catch { /* leave fields empty if parse fails */ }
+        }
+
+        return View(vm);
     }
 
     [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> EditDestination(int id, DestinationServerViewModel vm)
     {
+        ModelState.Remove("ConnectionString");
+        ModelState.Remove("SqlPassword"); // optional on edit — keep existing if blank
+        if (string.IsNullOrEmpty(vm.DefaultDatabase))
+            ModelState.AddModelError("DefaultDatabase", "Select a database.");
+
         if (!ModelState.IsValid) return View(vm);
 
         var s = await _db.DestinationServers.FindAsync(id);
         if (s is null) return NotFound();
 
-        s.Name = vm.Name; s.ConnectionString = vm.ConnectionString;
-        s.DefaultDatabase = vm.DefaultDatabase; s.RetryCount = vm.RetryCount;
-        s.RetryDelaySeconds = vm.RetryDelaySeconds; s.IsActive = vm.IsActive;
+        s.Name = vm.Name;
+        s.DefaultDatabase = vm.DefaultDatabase;
+        s.RetryCount = vm.RetryCount;
+        s.RetryDelaySeconds = vm.RetryDelaySeconds;
+        s.IsActive = vm.IsActive;
+
+        if (vm.UseWindowsAuth)
+        {
+            s.ConnectionString = BuildDestinationConnectionString(vm.ServerAddress, true, null, null);
+        }
+        else if (!string.IsNullOrEmpty(vm.SqlPassword))
+        {
+            s.ConnectionString = BuildDestinationConnectionString(vm.ServerAddress, false, vm.SqlUsername, vm.SqlPassword);
+        }
+        else if (!string.IsNullOrEmpty(s.ConnectionString))
+        {
+            // Keep existing password, update server/username
+            var csb = new SqlConnectionStringBuilder(s.ConnectionString)
+            {
+                DataSource = vm.ServerAddress,
+                TrustServerCertificate = true
+            };
+            if (!string.IsNullOrEmpty(vm.SqlUsername)) csb.UserID = vm.SqlUsername;
+            s.ConnectionString = csb.ConnectionString;
+        }
+        else
+        {
+            ModelState.AddModelError("SqlPassword", "Password is required.");
+            return View(vm);
+        }
 
         await _db.SaveChangesAsync();
         TempData["Success"] = "Destination server updated.";
@@ -206,6 +260,26 @@ public class ServersController : Controller
 
         var ok = await _schema.TestDestinationConnectionAsync(s);
         return Json(new { ok, message = ok ? "Connection successful" : "Connection failed" });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ProbeDestinationDatabases([FromBody] ProbeDestinationRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Server))
+            return Json(new List<string>());
+        var cs = BuildProbeConnectionString(req.Server, req.UseWindowsAuth, req.Username, req.Password);
+        var databases = await _schema.GetDatabasesAsync(cs);
+        return Json(databases);
+    }
+
+    [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ProbeDestinationConnection([FromBody] ProbeDestinationRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Database))
+            return Json(new { ok = false, message = "Select a database first." });
+        var cs = BuildProbeConnectionString(req.Server, req.UseWindowsAuth, req.Username, req.Password);
+        var (ok, message) = await _schema.TestConnectionWithDatabaseAsync(cs, req.Database);
+        return Json(new { ok, message });
     }
 
     // ── Schema API for AJAX ──────────────────────────
@@ -259,20 +333,24 @@ public class ServersController : Controller
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetDestinationTables(int serverId, string database)
+    public async Task<IActionResult> GetDestinationTables(int serverId, string? database = null)
     {
         var s = await _db.DestinationServers.FindAsync(serverId);
         if (s is null) return Json(new List<string>());
-        var tables = await _schema.GetDestinationTablesAsync(s, database);
+        var db = !string.IsNullOrEmpty(database) ? database : s.DefaultDatabase;
+        if (string.IsNullOrEmpty(db)) return Json(new List<string>());
+        var tables = await _schema.GetDestinationTablesAsync(s, db);
         return Json(tables);
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetDestinationColumns(int serverId, string database, string tableName)
+    public async Task<IActionResult> GetDestinationColumns(int serverId, string? database = null, string tableName = "")
     {
         var s = await _db.DestinationServers.FindAsync(serverId);
         if (s is null) return Json(new List<object>());
-        var cols = await _schema.GetDestinationColumnsAsync(s, database, tableName);
+        var db = !string.IsNullOrEmpty(database) ? database : s.DefaultDatabase ?? "";
+        if (string.IsNullOrEmpty(db)) return Json(new List<object>());
+        var cols = await _schema.GetDestinationColumnsAsync(s, db, tableName);
         return Json(cols);
     }
 
@@ -301,5 +379,27 @@ public class ServersController : Controller
             ? $"Connection to '{dest.Name}' succeeded."
             : $"Connection to '{dest.Name}' failed.";
         return RedirectToAction(nameof(Destinations));
+    }
+
+    // ── Helpers ──────────────────────────────────────
+
+    private static string BuildDestinationConnectionString(string server, bool useWindowsAuth, string? username, string? password)
+    {
+        var b = new SqlConnectionStringBuilder { DataSource = server, TrustServerCertificate = true };
+        if (useWindowsAuth) b.IntegratedSecurity = true;
+        else { b.UserID = username ?? ""; b.Password = password ?? ""; }
+        return b.ConnectionString;
+    }
+
+    private static string BuildProbeConnectionString(string server, bool useWindowsAuth, string? username, string? password)
+        => BuildDestinationConnectionString(server, useWindowsAuth, username, password);
+
+    public class ProbeDestinationRequest
+    {
+        public string Server { get; set; } = string.Empty;
+        public bool UseWindowsAuth { get; set; } = true;
+        public string? Username { get; set; }
+        public string? Password { get; set; }
+        public string? Database { get; set; }
     }
 }
