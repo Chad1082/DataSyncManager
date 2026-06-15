@@ -63,23 +63,33 @@
             @if (Model.SourceType == DataSyncManager.Web.Models.SourceType.Odbc)
             {
                 <div class="card shadow-sm mb-4">
-                    <div class="card-header fw-semibold"><i class="bi bi-calendar-date me-2"></i>ODBC Date Format</div>
+                    <div class="card-header fw-semibold"><i class="bi bi-calendar-date me-2"></i>ODBC Options</div>
                     <div class="card-body">
-                        <label asp-for="SourceDateFormat" class="form-label fw-semibold">Date Filter Format</label>
-                        <input asp-for="SourceDateFormat" class="form-control font-monospace" id="sourceDateFormatInput"
-                               placeholder="yyyy-MM-dd HH:mm:ss" />
-                        <div class="form-text">
-                            Format used when building date range filters in ODBC queries.
-                            Uses .NET <a href="https://learn.microsoft.com/en-us/dotnet/standard/base-types/custom-date-and-time-format-strings" target="_blank" rel="noopener">custom date/time format strings</a>.
-                        </div>
-                        <span asp-validation-for="SourceDateFormat" class="text-danger small"></span>
-                        <div class="mt-2 d-flex flex-wrap gap-2">
-                            <span class="text-muted small me-1 align-self-center">Common formats:</span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-dd HH:mm:ss')">yyyy-MM-dd HH:mm:ss</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-ddTHH:mm:ss')">yyyy-MM-ddTHH:mm:ss</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('MM/dd/yyyy HH:mm:ss')">MM/dd/yyyy HH:mm:ss</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('dd/MM/yyyy HH:mm:ss')">dd/MM/yyyy HH:mm:ss</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-dd')">yyyy-MM-dd</button>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label asp-for="SourceDateFormat" class="form-label fw-semibold">Date Filter Format</label>
+                                <input asp-for="SourceDateFormat" class="form-control font-monospace" id="sourceDateFormatInput"
+                                       placeholder="yyyy-MM-dd HH:mm:ss" />
+                                <div class="form-text">
+                                    Format used when building date range filters in ODBC queries.
+                                    Uses .NET <a href="https://learn.microsoft.com/en-us/dotnet/standard/base-types/custom-date-and-time-format-strings" target="_blank" rel="noopener">custom date/time format strings</a>.
+                                </div>
+                                <span asp-validation-for="SourceDateFormat" class="text-danger small"></span>
+                                <div class="mt-2 d-flex flex-wrap gap-2">
+                                    <span class="text-muted small me-1 align-self-center">Common formats:</span>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-dd HH:mm:ss')">yyyy-MM-dd HH:mm:ss</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-ddTHH:mm:ss')">yyyy-MM-ddTHH:mm:ss</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('MM/dd/yyyy HH:mm:ss')">MM/dd/yyyy HH:mm:ss</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('dd/MM/yyyy HH:mm:ss')">dd/MM/yyyy HH:mm:ss</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary font-monospace" onclick="setDateFmt('yyyy-MM-dd')">yyyy-MM-dd</button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="OdbcCommandTimeout" class="form-label fw-semibold">Command Timeout (seconds)</label>
+                                <input asp-for="OdbcCommandTimeout" class="form-control" type="number" min="0" max="3600" />
+                                <div class="form-text">0 = no timeout (driver default). Increase if queries time out.</div>
+                                <span asp-validation-for="OdbcCommandTimeout" class="text-danger small"></span>
+                            </div>
                         </div>
                     </div>
                 </div>

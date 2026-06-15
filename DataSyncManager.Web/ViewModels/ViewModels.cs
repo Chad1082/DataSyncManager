@@ -132,6 +132,10 @@ public class SourceServerViewModel
     [Display(Name = "Date Filter Format")]
     public string SourceDateFormat { get; set; } = "yyyy-MM-dd HH:mm:ss";
 
+    [Range(0, 3600)]
+    [Display(Name = "Command Timeout (seconds)")]
+    public int OdbcCommandTimeout { get; set; } = 0;
+
     public bool IsActive { get; set; } = true;
 }
 

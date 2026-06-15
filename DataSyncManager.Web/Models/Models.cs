@@ -84,6 +84,9 @@ public class SourceServer
     [MaxLength(50)]
     public string SourceDateFormat { get; set; } = "yyyy-MM-dd HH:mm:ss";
 
+    // ODBC command timeout in seconds (0 = no timeout / driver default). Ignored for SQL Server / REST API.
+    public int OdbcCommandTimeout { get; set; } = 0;
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string? CreatedByUserId { get; set; }

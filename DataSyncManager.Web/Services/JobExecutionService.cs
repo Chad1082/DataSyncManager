@@ -506,7 +506,7 @@ public class JobExecutionService : IJobExecutionService
 
         using var conn = new OdbcConnection(src.ConnectionString);
         conn.Open();
-        using var cmd = new OdbcCommand(sql, conn);
+        using var cmd = new OdbcCommand(sql, conn) { CommandTimeout = src.OdbcCommandTimeout };
         using var adapter = new OdbcDataAdapter(cmd);
         adapter.Fill(dt);
 
