@@ -58,6 +58,11 @@
 
             <div id="schedulePanel" class="@(Model.IsScheduled ? "" : "d-none")">
                 @await Html.PartialAsync("_CronBuilder", Model.CronExpression ?? "")
+                <div class="mb-3 mt-3">
+                    <label asp-for="ScheduleTimezone" class="form-label fw-semibold">Timezone</label>
+                    <select asp-for="ScheduleTimezone" asp-items="Model.AvailableTimezones" class="form-select"></select>
+                    <div class="form-text">Cron times are interpreted in this timezone. Use <strong>GMT Standard Time</strong> for UK time (handles BST automatically).</div>
+                </div>
             </div>
 
             <hr/>

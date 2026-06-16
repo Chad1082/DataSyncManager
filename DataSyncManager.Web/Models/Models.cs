@@ -139,6 +139,11 @@ public class Project
     public string? CronExpression { get; set; }          // Hangfire cron
     public string? HangfireJobId { get; set; }
     public bool IsScheduled { get; set; } = false;
+
+    // Windows timezone ID for cron interpretation (e.g. "GMT Standard Time", "UTC")
+    [MaxLength(100)]
+    public string ScheduleTimezone { get; set; } = "UTC";
+
     public bool IsActive { get; set; } = true;
 
     // Alerts

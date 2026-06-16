@@ -196,6 +196,10 @@ public class ProjectFormViewModel
     [Display(Name = "Cron Expression")]
     public string? CronExpression { get; set; }
 
+    [MaxLength(100)]
+    [Display(Name = "Schedule Timezone")]
+    public string ScheduleTimezone { get; set; } = "UTC";
+
     public bool IsScheduled { get; set; }
     public bool IsActive { get; set; } = true;
 
@@ -208,6 +212,12 @@ public class ProjectFormViewModel
     public List<SourceServer> AvailableSourceServers { get; set; } = new();
     public List<SelectListItem> SourceServerSelectList =>
         AvailableSourceServers.Select(s => new SelectListItem(s.Name, s.Id.ToString())).ToList();
+
+    public List<SelectListItem> AvailableTimezones =>
+        TimeZoneInfo.GetSystemTimeZones()
+            .OrderBy(tz => tz.BaseUtcOffset).ThenBy(tz => tz.DisplayName)
+            .Select(tz => new SelectListItem(tz.DisplayName, tz.Id))
+            .ToList();
 
     // Convenience alias for AlertOn
     public AlertOn AlertOn => ProjectAlertOn;

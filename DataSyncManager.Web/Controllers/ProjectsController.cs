@@ -112,6 +112,7 @@ public class ProjectsController : Controller
             ScheduledStartTime = vm.ScheduledStartTime,
             CronExpression = vm.CronExpression,
             IsScheduled = vm.IsScheduled,
+            ScheduleTimezone = vm.ScheduleTimezone,
             IsActive = vm.IsActive,
             ProjectAlertOn = vm.ProjectAlertOn,
             AlertEmailAddresses = vm.AlertEmailAddresses,
@@ -145,6 +146,7 @@ public class ProjectsController : Controller
             ScheduledStartTime = project.ScheduledStartTime,
             CronExpression = project.CronExpression,
             IsScheduled = project.IsScheduled,
+            ScheduleTimezone = project.ScheduleTimezone,
             IsActive = project.IsActive,
             ProjectAlertOn = project.ProjectAlertOn,
             AlertEmailAddresses = project.AlertEmailAddresses,
@@ -173,6 +175,7 @@ public class ProjectsController : Controller
         project.ScheduledStartTime = vm.ScheduledStartTime;
         project.CronExpression = vm.CronExpression;
         project.IsScheduled = vm.IsScheduled;
+        project.ScheduleTimezone = vm.ScheduleTimezone;
         project.IsActive = vm.IsActive;
         project.ProjectAlertOn = vm.ProjectAlertOn;
         project.AlertEmailAddresses = vm.AlertEmailAddresses;
@@ -239,10 +242,14 @@ public class ProjectsController : Controller
 
     private void ScheduleRecurring(Project project)
     {
+        TimeZoneInfo tz;
+        try { tz = TimeZoneInfo.FindSystemTimeZoneById(project.ScheduleTimezone ?? "UTC"); }
+        catch { tz = TimeZoneInfo.Utc; }
+
         _recurringJobs.AddOrUpdate<ProjectRunner>(
             $"project-{project.Id}",
             r => r.RunProjectAsync(project.Id, CancellationToken.None),
             project.CronExpression,
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Local });
+            new RecurringJobOptions { TimeZone = tz });
     }
 }
