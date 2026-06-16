@@ -204,6 +204,9 @@ public class JobExecutionService : IJobExecutionService
         run.RowsRead = data.Rows.Count;
         await AddLog(db, run.Id, "Info", $"Read {run.RowsRead} rows from source", ct);
 
+        // Reconcile: drop any fields absent from the source DataTable
+        var activeFields = await ReconcileFieldsAsync(job, data, dest, db, run.Id, ct);
+
         // Truncate then bulk insert
         var parts = job.DestinationTable.Split('.');
         var schema = parts.Length == 2 ? parts[0] : "dbo";
@@ -227,7 +230,7 @@ public class JobExecutionService : IJobExecutionService
                 {
                     DestinationTableName = $"[{schema}].[{table}]"
                 };
-                foreach (var f in job.JobFields)
+                foreach (var f in activeFields)                              // ← was job.JobFields
                     bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
 
                 await bulk.WriteToServerAsync(data, ct);
@@ -330,12 +333,20 @@ public class JobExecutionService : IJobExecutionService
         var schema = parts.Length == 2 ? parts[0] : "dbo";
         var table = parts.Length == 2 ? parts[1] : job.DestinationTable;
 
+        //var keys = (job.UniqueKeyFields ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+        //var fieldList = job.JobFields.Select(f => f.DestinationFieldName ?? f.SourceFieldName).ToList();
+        //var onClause = string.Join(" AND ", keys.Select(k => $"t.[{k.Trim()}] = s.[{k.Trim()}]"));
+        //var setClause = string.Join(", ", fieldList.Where(f => !keys.Contains(f.Trim())).Select(f => $"t.[{f}] = s.[{f}]"));
+        //var insColList = string.Join(", ", fieldList.Select(f => $"[{f}]"));
+        //var insValList = string.Join(", ", fieldList.Select(f => $"s.[{f}]"));
         var keys = (job.UniqueKeyFields ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
-        var fieldList = job.JobFields.Select(f => f.DestinationFieldName ?? f.SourceFieldName).ToList();
-        var onClause = string.Join(" AND ", keys.Select(k => $"t.[{k.Trim()}] = s.[{k.Trim()}]"));
-        var setClause = string.Join(", ", fieldList.Where(f => !keys.Contains(f.Trim())).Select(f => $"t.[{f}] = s.[{f}]"));
-        var insColList = string.Join(", ", fieldList.Select(f => $"[{f}]"));
-        var insValList = string.Join(", ", fieldList.Select(f => $"s.[{f}]"));
+
+        // These are built lazily on the first batch after field reconciliation
+        List<JobField>? activeFields = null;
+        var onClause = string.Empty;
+        var setClause = string.Empty;
+        var insColList = string.Empty;
+        var insValList = string.Empty;
 
         var csb = new SqlConnectionStringBuilder(dest.ConnectionString) { InitialCatalog = job.DestinationDatabase };
 
@@ -353,6 +364,18 @@ public class JobExecutionService : IJobExecutionService
 
             var data = await FetchSourceDataAsync(job, src, batchStart, batchEnd, ct);
             run.RowsRead += data.Rows.Count;
+
+            // Reconcile once — detect any source columns that have disappeared
+            if (activeFields is null)
+            {
+                activeFields = await ReconcileFieldsAsync(job, data, dest, db, run.Id, ct);
+
+                var activeFieldList = activeFields.Select(f => f.DestinationFieldName ?? f.SourceFieldName).ToList();
+                onClause = string.Join(" AND ", keys.Select(k => $"t.[{k.Trim()}] = s.[{k.Trim()}]"));
+                setClause = string.Join(", ", activeFieldList.Where(f => !keys.Select(k => k.Trim()).Contains(f)).Select(f => $"t.[{f}] = s.[{f}]"));
+                insColList = string.Join(", ", activeFieldList.Select(f => $"[{f}]"));
+                insValList = string.Join(", ", activeFieldList.Select(f => $"s.[{f}]"));
+            }
 
             if (estimatedBatches > 1)
             {
@@ -387,7 +410,7 @@ public class JobExecutionService : IJobExecutionService
                         .ExecuteNonQueryAsync(ct);
 
                     using var bulk = new SqlBulkCopy(conn) { DestinationTableName = staging };
-                    foreach (var f in job.JobFields)
+                    foreach (var f in activeFields!)
                         bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
                     await bulk.WriteToServerAsync(data, ct);
 
@@ -614,6 +637,97 @@ public class JobExecutionService : IJobExecutionService
         var body = BuildJobEmailBody(job, run);
 
         await _email.SendAsync(to, subject, body);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Field reconciliation — strips JobFields whose source column
+    // is absent from the fetched DataTable, logging each omission.
+    // Also relaxes any NOT NULL destination columns that are now
+    // orphaned, so they don't block future MERGE/INSERT.
+    // ──────────────────────────────────────────────────────────
+
+    private async Task<List<JobField>> ReconcileFieldsAsync(
+        Job job, DataTable data, DestinationServer dest,
+        ApplicationDbContext db, long runId, CancellationToken ct)
+    {
+        var active = new List<JobField>();
+        var dropped = new List<JobField>();
+
+        foreach (var f in job.JobFields)
+        {
+            if (data.Columns.Contains(f.SourceFieldName))
+            {
+                active.Add(f);
+            }
+            else
+            {
+                dropped.Add(f);
+                await AddLog(db, runId, "Warn",
+                    $"Source column [{f.SourceFieldName}] not present in source data — skipped for this run.", ct);
+            }
+        }
+
+        // For any dropped field whose destination column is NOT NULL,
+        // ALTER it to NULL so future runs don't get a constraint violation.
+        if (dropped.Count > 0)
+        {
+            var parts = job.DestinationTable.Split('.');
+            var schema = parts.Length == 2 ? parts[0] : "dbo";
+            var table = parts.Length == 2 ? parts[1] : job.DestinationTable;
+            var csb = new SqlConnectionStringBuilder(dest.ConnectionString)
+            { InitialCatalog = job.DestinationDatabase };
+
+            await using var conn = new SqlConnection(csb.ConnectionString);
+            await conn.OpenAsync(ct);
+
+            foreach (var f in dropped)
+            {
+                var destCol = f.DestinationFieldName ?? f.SourceFieldName;
+
+                // Fetch the current nullability from INFORMATION_SCHEMA
+                var nullableCmd = new SqlCommand("""
+                SELECT IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH,
+                       NUMERIC_PRECISION, NUMERIC_SCALE
+                FROM   INFORMATION_SCHEMA.COLUMNS
+                WHERE  TABLE_SCHEMA = @s AND TABLE_NAME = @t AND COLUMN_NAME = @c
+                """, conn);
+                nullableCmd.Parameters.AddWithValue("@s", schema);
+                nullableCmd.Parameters.AddWithValue("@t", table);
+                nullableCmd.Parameters.AddWithValue("@c", destCol);
+
+                await using var rdr = await nullableCmd.ExecuteReaderAsync(ct);
+                if (!await rdr.ReadAsync(ct)) { await rdr.CloseAsync(); continue; }
+
+                var isNullable = rdr.GetString(0) == "YES";
+                var dataType = rdr.GetString(1).ToUpper();
+                var charMaxLen = rdr.IsDBNull(2) ? (int?)null : rdr.GetInt32(2);
+                var numPrec = rdr.IsDBNull(3) ? (int?)null : rdr.GetInt32(3);
+                var numScale = rdr.IsDBNull(4) ? (int?)null : rdr.GetInt32(4);
+                await rdr.CloseAsync();
+
+                if (isNullable) continue;   // already nullable — nothing to do
+
+                // Build the type string for ALTER COLUMN
+                var typeDef = dataType switch
+                {
+                    "NVARCHAR" or "VARCHAR" or "CHAR" or "NCHAR" =>
+                        charMaxLen is null or <= 0 or > 4000
+                            ? $"{dataType}(MAX)"
+                            : $"{dataType}({charMaxLen})",
+                    "DECIMAL" or "NUMERIC" =>
+                        $"{dataType}({numPrec ?? 18},{numScale ?? 6})",
+                    _ => dataType
+                };
+
+                var alterSql = $"ALTER TABLE [{schema}].[{table}] ALTER COLUMN [{destCol}] {typeDef} NULL";
+                await new SqlCommand(alterSql, conn).ExecuteNonQueryAsync(ct);
+                await AddLog(db, runId, "Warn",
+                    $"Destination column [{destCol}] relaxed to NULL (source field no longer present).", ct);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+        return active;
     }
 
     private static string BuildJobEmailBody(Job job, JobRun run) => $"""
