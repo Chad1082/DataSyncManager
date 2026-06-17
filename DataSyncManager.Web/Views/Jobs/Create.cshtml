@@ -94,7 +94,7 @@
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Database</label>
                         <div id="destDatabaseDisplay" class="form-control-plaintext fw-semibold text-primary ps-1">
-                            @(Model.DestinationDatabase.Length > 0 ? Model.DestinationDatabase : "— select a server —")
+                            @(string.IsNullOrEmpty(Model.DestinationDatabase) ? "— select a server —" : Model.DestinationDatabase)
                         </div>
                         <input asp-for="DestinationDatabase" type="hidden" id="destDatabaseHidden" />
                         <div class="form-text">Set on the destination server configuration.</div>
@@ -486,7 +486,7 @@
                 isNullable: cb.dataset.nullable === 'true',
                 isIncluded: cb.checked
             }));
-            document.getElementById('selectedFieldsJson').value = JSON.stringify(fields.filter(f => f.isIncluded));
+            document.getElementById('selectedFieldsJson').value = JSON.stringify(fields);
 
             // Source table
             document.getElementById('sourceTableHidden').value = document.getElementById('sourceTableSelect').value;
