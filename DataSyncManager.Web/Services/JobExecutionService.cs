@@ -243,15 +243,12 @@ public class JobExecutionService : IJobExecutionService
                 await tx.RollbackAsync(ct);
                 throw;
             }
-        }, run, db, ct);
+        }, run, db, ct,
+        context: $"Job '{job.Name}' | {src.Name} → {dest.Name} | {job.SourceTable} → [{job.DestinationDatabase}].[{job.DestinationTable}] | FullReplace");
 
         await AddLog(db, run.Id, "Info", $"Inserted {run.RowsInserted} rows", ct);
         await db.SaveChangesAsync(ct);
     }
-
-    // ──────────────────────────────────────────────────────────
-    // Upsert Mode (windowed by DaysPerBatch)
-    // ──────────────────────────────────────────────────────────
 
     // ──────────────────────────────────────────────────────────
     // Upsert Mode (windowed by DaysPerBatch, with overlap buffer)
@@ -421,7 +418,8 @@ public class JobExecutionService : IJobExecutionService
                         if (rdr.GetString(0) == "INSERT") run.RowsInserted++;
                         else run.RowsUpdated++;
                     }
-                }, run, db, ct);
+                }, run, db, ct,
+                context: $"Job '{job.Name}' | {src.Name} → {dest.Name} | {job.SourceTable} → [{job.DestinationDatabase}].[{job.DestinationTable}] | Upsert");
             }
 
             batchStart = batchEnd;
@@ -573,7 +571,8 @@ public class JobExecutionService : IJobExecutionService
     // ──────────────────────────────────────────────────────────
 
     private async Task ExecuteWithRetryAsync(int retryCount, int retryDelaySeconds,
-        Func<Task> action, JobRun? run, ApplicationDbContext? db, CancellationToken ct)
+    Func<Task> action, JobRun? run, ApplicationDbContext? db, CancellationToken ct,
+    string context = "")
     {
         var attempts = 0;
         while (true)
@@ -592,13 +591,20 @@ public class JobExecutionService : IJobExecutionService
                     if (run != null) run.RetryAttempts = attempts;
                     throw;
                 }
-                _log.LogWarning(ex, "Attempt {Attempt} failed; retrying in {Delay}s", attempts, retryDelaySeconds);
+
+                var contextPrefix = string.IsNullOrWhiteSpace(context) ? "" : $"[{context}] ";
+
+                _log.LogWarning(ex,
+                    "{Context}Attempt {Attempt} failed ({ExceptionType}: {Message}); retrying in {Delay}s",
+                    contextPrefix, attempts, ex.GetType().Name, ex.Message, retryDelaySeconds);
+
                 if (run != null && db != null)
                 {
                     await AddLog(db, run.Id, "Warning",
-                        $"Attempt {attempts} failed ({ex.Message}). Retrying in {retryDelaySeconds}s...", ct);
+                        $"{contextPrefix}Attempt {attempts} failed — {ex.GetType().Name}: {ex.Message}. Retrying in {retryDelaySeconds}s...", ct);
                     await db.SaveChangesAsync(ct);
                 }
+
                 await Task.Delay(TimeSpan.FromSeconds(retryDelaySeconds), ct);
             }
         }
