@@ -236,7 +236,8 @@ public class JobExecutionService : IJobExecutionService
 
                 using var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.Default, tx)
                 {
-                    DestinationTableName = $"[{schema}].[{table}]"
+                    DestinationTableName = $"[{schema}].[{table}]",
+                    BulkCopyTimeout = 0  // 0 = no timeout
                 };
                 foreach (var f in activeFields)                              // ← was job.JobFields
                     bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
@@ -412,18 +413,25 @@ public class JobExecutionService : IJobExecutionService
 
                     var stagingCols = string.Join(", ", job.JobFields.Select(f => $"[{f.DestinationFieldName ?? f.SourceFieldName}]"));
                     await new SqlCommand($"SELECT TOP 0 {stagingCols} INTO {staging} FROM [{schema}].[{table}]", conn)
-                        .ExecuteNonQueryAsync(ct);
+                    {
+                        CommandTimeout = 0
+                    }.ExecuteNonQueryAsync(ct);
 
                     using var bulk = new SqlBulkCopy(conn) { DestinationTableName = staging };
                     foreach (var f in activeFields!)
                         bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
                     await bulk.WriteToServerAsync(data, ct);
 
-                    await using var mergeCmd = new SqlCommand(merge, conn);
-                    await using var rdr = await mergeCmd.ExecuteReaderAsync(ct);
-                    while (await rdr.ReadAsync(ct))
+                    //await using var mergeCmd = new SqlCommand(merge, conn);
+                    //await using var rdr = await mergeCmd.ExecuteReaderAsync(ct);
+                    var mergeCmd = new SqlCommand(merge, conn)
                     {
-                        if (rdr.GetString(0) == "INSERT") run.RowsInserted++;
+                        CommandTimeout = 0  // 0 = no timeout; or use e.g. 600 for 10 minutes
+                    };
+                    await using var mergeReader = await mergeCmd.ExecuteReaderAsync(ct);
+                    while (await mergeReader.ReadAsync(ct))
+                    {
+                        if (mergeReader.GetString(0) == "INSERT") run.RowsInserted++;
                         else run.RowsUpdated++;
                     }
                 }, run, db, ct,

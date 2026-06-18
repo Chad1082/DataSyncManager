@@ -171,7 +171,7 @@ public class ProjectsController : Controller
 
         project.Name = vm.Name;
         project.Description = vm.Description;
-        project.SourceServerId = vm.SourceServerId;
+        //project.SourceServerId = vm.SourceServerId;
         project.ScheduledStartTime = vm.ScheduledStartTime;
         project.CronExpression = vm.CronExpression;
         project.IsScheduled = vm.IsScheduled;
@@ -230,11 +230,11 @@ public class ProjectsController : Controller
         var project = await _db.Projects.FindAsync(id);
         if (project is null) return NotFound();
 
-        project.IsActive = false;
         _recurringJobs.RemoveIfExists($"project-{id}");
+        _db.Projects.Remove(project);
         await _db.SaveChangesAsync();
 
-        TempData["Success"] = "Project deactivated.";
+        TempData["Success"] = $"Project '{project.Name}' deleted.";
         return RedirectToAction(nameof(Index));
     }
 
