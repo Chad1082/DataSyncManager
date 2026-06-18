@@ -171,7 +171,7 @@ public class ProjectsController : Controller
 
         project.Name = vm.Name;
         project.Description = vm.Description;
-        project.SourceServerId = vm.SourceServerId;
+        //project.SourceServerId = vm.SourceServerId;
         project.ScheduledStartTime = vm.ScheduledStartTime;
         project.CronExpression = vm.CronExpression;
         project.IsScheduled = vm.IsScheduled;
