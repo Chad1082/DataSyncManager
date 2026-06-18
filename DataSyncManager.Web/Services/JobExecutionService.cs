@@ -180,6 +180,14 @@ public class JobExecutionService : IJobExecutionService
     {
         var nullDef = nullable ? "NULL" : "NOT NULL";
         var typeLower = dataType.ToLower();
+        // SQL Server TIMESTAMP / ROWVERSION is a per-table binary counter.
+        // Only one is allowed per table and it cannot be set explicitly — map to BINARY(8).
+        if (typeLower is "rowversion")
+            return $"[{colName}] BINARY(8) {nullDef}";
+
+        if (typeLower is "timestamp")
+            return $"[{colName}] DATETIME2(7) {nullDef}";
+
         var typeStr = typeLower switch
         {
             "nvarchar" or "varchar" or "char" or "nchar" =>
