@@ -68,6 +68,27 @@ public class DashboardViewModel
     public List<RecentRunItem> RecentProjectRuns { get; set; } = new();
     public List<UpcomingProjectItem> UpcomingProjects { get; set; } = new();
     public List<DailyRunStat> DailyStats { get; set; } = new();
+    public LogStorageStats LogStats { get; set; } = new();
+}
+
+public class LogStorageStats
+{
+    // SerilogEvents table
+    public long SerilogEventCount { get; set; }
+    public long SerilogSizeKb { get; set; }
+
+    // ProjectRun / JobRun / JobRunLog
+    public long ProjectRunCount { get; set; }
+    public long JobRunCount { get; set; }
+    public long JobRunLogCount { get; set; }
+    public long RunTablesSizeKb { get; set; }
+
+    // Oldest records still retained
+    public DateTime? OldestProjectRun { get; set; }
+    public DateTime? OldestSerilogEvent { get; set; }
+
+    // Next purge (filled by controller)
+    public DateTime? NextPurgeUtc { get; set; }
 }
 
 public class RecentRunItem

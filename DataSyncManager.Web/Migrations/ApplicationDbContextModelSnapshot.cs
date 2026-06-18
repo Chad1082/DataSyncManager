@@ -139,7 +139,7 @@ namespace DataSyncManager.Web.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("DestinationServers");
+                    b.ToTable("DestinationServers", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.EmailSettings", b =>
@@ -185,7 +185,7 @@ namespace DataSyncManager.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("EmailSettings");
+                    b.ToTable("EmailSettings", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.EmailTemplate", b =>
@@ -210,7 +210,7 @@ namespace DataSyncManager.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("EmailTemplates");
+                    b.ToTable("EmailTemplates", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.Job", b =>
@@ -307,7 +307,7 @@ namespace DataSyncManager.Web.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("Jobs");
+                    b.ToTable("Jobs", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.JobField", b =>
@@ -350,7 +350,7 @@ namespace DataSyncManager.Web.Migrations
 
                     b.HasIndex("JobId");
 
-                    b.ToTable("JobFields");
+                    b.ToTable("JobFields", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.JobRun", b =>
@@ -408,7 +408,7 @@ namespace DataSyncManager.Web.Migrations
 
                     b.HasIndex("ProjectRunId");
 
-                    b.ToTable("JobRuns");
+                    b.ToTable("JobRuns", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.JobRunLog", b =>
@@ -441,7 +441,7 @@ namespace DataSyncManager.Web.Migrations
 
                     b.HasIndex("LoggedAt");
 
-                    b.ToTable("JobRunLogs");
+                    b.ToTable("JobRunLogs", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.Project", b =>
@@ -507,7 +507,7 @@ namespace DataSyncManager.Web.Migrations
 
                     b.HasIndex("SourceServerId");
 
-                    b.ToTable("Projects");
+                    b.ToTable("Projects", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.ProjectRun", b =>
@@ -541,7 +541,7 @@ namespace DataSyncManager.Web.Migrations
 
                     b.HasIndex("ProjectId");
 
-                    b.ToTable("ProjectRuns");
+                    b.ToTable("ProjectRuns", (string)null);
                 });
 
             modelBuilder.Entity("DataSyncManager.Web.Models.SourceServer", b =>
@@ -605,7 +605,7 @@ namespace DataSyncManager.Web.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("SourceServers");
+                    b.ToTable("SourceServers", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>

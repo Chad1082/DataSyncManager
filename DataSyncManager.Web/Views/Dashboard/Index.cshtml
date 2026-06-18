@@ -98,6 +98,88 @@
         </div>
     </div>
 </div>
+<!-- Log Storage Stats -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-database me-1 text-primary"></i>Log Storage (90-day retention)</span>
+        <small class="text-muted fw-normal">
+            Next purge: @(Model.LogStats.NextPurgeUtc.HasValue
+                            ? Model.LogStats.NextPurgeUtc.Value.ToString("yyyy-MM-dd HH:mm") + " UTC"
+                        : "—")
+        </small>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-sm-6 col-xl-3">
+                <div class="d-flex align-items-start gap-2">
+                    <div class="rounded bg-warning bg-opacity-10 p-2 mt-1">
+                        <i class="bi bi-file-text text-warning fs-5"></i>
+                    </div>
+                    <div>
+                        <div class="fw-semibold">Serilog Events</div>
+                        <div class="fs-5 fw-bold">@Model.LogStats.SerilogEventCount.ToString("N0")</div>
+                        <div class="text-muted small">
+                            ~@FormatKb(Model.LogStats.SerilogSizeKb)
+                            @if (Model.LogStats.OldestSerilogEvent.HasValue)
+                            {
+                                <br /><span>Oldest: @Model.LogStats.OldestSerilogEvent.Value.ToString("yyyy-MM-dd")</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="d-flex align-items-start gap-2">
+                    <div class="rounded bg-primary bg-opacity-10 p-2 mt-1">
+                        <i class="bi bi-collection text-primary fs-5"></i>
+                    </div>
+                    <div>
+                        <div class="fw-semibold">Project Runs</div>
+                        <div class="fs-5 fw-bold">@Model.LogStats.ProjectRunCount.ToString("N0")</div>
+                        @if (Model.LogStats.OldestProjectRun.HasValue)
+                        {
+                            <div class="text-muted small">Oldest: @Model.LogStats.OldestProjectRun.Value.ToString("yyyy-MM-dd")</div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="d-flex align-items-start gap-2">
+                    <div class="rounded bg-info bg-opacity-10 p-2 mt-1">
+                        <i class="bi bi-list-check text-info fs-5"></i>
+                    </div>
+                    <div>
+                        <div class="fw-semibold">Job Runs</div>
+                        <div class="fs-5 fw-bold">@Model.LogStats.JobRunCount.ToString("N0")</div>
+                        <div class="text-muted small">@Model.LogStats.JobRunLogCount.ToString("N0") log lines</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="d-flex align-items-start gap-2">
+                    <div class="rounded bg-secondary bg-opacity-10 p-2 mt-1">
+                        <i class="bi bi-hdd text-secondary fs-5"></i>
+                    </div>
+                    <div>
+                        <div class="fw-semibold">Run Tables On-Disk</div>
+                        <div class="fs-5 fw-bold">@FormatKb(Model.LogStats.RunTablesSizeKb)</div>
+                        <div class="text-muted small">ProjectRuns + JobRuns + JobRunLogs</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@functions {
+    static string FormatKb(long kb)
+    {
+        if (kb >= 1_048_576) return $"{kb / 1_048_576.0:F1} GB";
+        if (kb >= 1_024) return $"{kb / 1_024.0:F1} MB";
+        return $"{kb:N0} KB";
+    }
+}
 
 <!-- Recent Runs -->
 <div class="card border-0 shadow-sm">

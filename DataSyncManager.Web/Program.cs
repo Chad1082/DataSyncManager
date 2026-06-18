@@ -107,6 +107,7 @@ try
     builder.Services.AddScoped<ISchemaService, SchemaService>();
     builder.Services.AddScoped<IJobExecutionService, JobExecutionService>();
     builder.Services.AddScoped<ProjectRunner>();
+    builder.Services.AddScoped<LogPurgeService>();
 
     // ─── MVC ──────────────────────────────────────────────────
     builder.Services.AddControllersWithViews()
@@ -159,6 +160,17 @@ try
                 app.Services.GetRequiredService<IHttpContextAccessor>())
         }
     });
+
+    // Schedule nightly log purge at 02:30 UTC
+    RecurringJob.AddOrUpdate<LogPurgeService>(
+        recurringJobId: "log-purge-nightly",
+        methodCall: svc => svc.PurgeOldLogsAsync(CancellationToken.None),
+        cronExpression: "30 2 * * *",           // 02:30 UTC every day
+        options: new RecurringJobOptions
+        {
+            TimeZone = TimeZoneInfo.Utc
+        });
+
 
     app.MapControllerRoute(
         name: "default",
