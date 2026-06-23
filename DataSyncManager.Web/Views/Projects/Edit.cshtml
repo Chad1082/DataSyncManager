@@ -47,11 +47,10 @@
                 <div class="card-header fw-semibold"><i class="bi bi-clock me-2"></i>Schedule</div>
                 <div class="card-body">
                     <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" id="enableSchedule"
-                               @(string.IsNullOrEmpty(Model.CronExpression) ? "" : "checked")>
+                        <input asp-for="IsScheduled" class="form-check-input" type="checkbox" id="enableSchedule" />
                         <label class="form-check-label fw-semibold" for="enableSchedule">Enable scheduled runs</label>
                     </div>
-                    <div id="cronPanel" class="@(string.IsNullOrEmpty(Model.CronExpression) ? "d-none" : "")">
+                    <div id="cronPanel" class="@(Model.IsScheduled ? "" : "d-none")">
                         @await Html.PartialAsync("_CronBuilder", Model.CronExpression ?? "")
                         <div class="mb-3 mt-3">
                             <label asp-for="ScheduleTimezone" class="form-label fw-semibold">Timezone</label>
@@ -67,26 +66,13 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Alert on</label>
-                        <div class="d-flex gap-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="AlertOnSuccess"
-                                       id="alertSuccess" value="true"
-                                       @(((int)Model.AlertOn & 1) != 0 ? "checked" : "")>
-                                <label class="form-check-label" for="alertSuccess">Success</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="AlertOnFailure"
-                                       id="alertFailure" value="true"
-                                       @(((int)Model.AlertOn & 2) != 0 ? "checked" : "")>
-                                <label class="form-check-label" for="alertFailure">Failure</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="AlertOnError"
-                                       id="alertError" value="true"
-                                       @(((int)Model.AlertOn & 4) != 0 ? "checked" : "")>
-                                <label class="form-check-label" for="alertError">Errors</label>
-                            </div>
-                        </div>
+                        <select asp-for="ProjectAlertOn" class="form-select">
+                            <option value="0">Never</option>
+                            <option value="1">Succeeded only</option>
+                            <option value="2">Failed only</option>
+                            <option value="4">Errors / partial only</option>
+                            <option value="7">Always (all outcomes)</option>
+                        </select>
                     </div>
                     <div>
                         <label asp-for="AlertEmailAddresses" class="form-label fw-semibold">Alert Email Addresses</label>
