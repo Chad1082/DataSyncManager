@@ -177,6 +177,9 @@ public class Job
     [Required, MaxLength(300)]
     public string SourceTable { get; set; } = string.Empty;   // schema.table or endpoint path
 
+    [MaxLength(4000)]
+    public string? SourceQuery { get; set; }
+
     // Destination
     public int DestinationServerId { get; set; }
     public DestinationServer DestinationServer { get; set; } = null!;

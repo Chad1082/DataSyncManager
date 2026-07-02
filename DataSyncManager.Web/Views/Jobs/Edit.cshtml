@@ -21,16 +21,53 @@
             <input type="hidden" asp-for="SourceServerId" />
             <input type="hidden" id="selectedFieldsJson" name="SelectedFieldsJson" value="@Model.SelectedFieldsJson" />
 
-            <!-- Source table (read-only on edit) -->
+            <!-- Source -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header fw-semibold"><i class="bi bi-table me-2"></i>Source</div>
                 <div class="card-body row g-3">
-                    <div class="col-md-5">
+
+                    @if (Model.ProjectSourceServer?.SourceType != DataSyncManager.Web.Models.SourceType.RestApi)
+                    {
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Source Mode</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="sourceMode" id="modeTable"
+                                           value="table" @(Model.IsCustomQuery ? "" : "checked")>
+                                    <label class="form-check-label" for="modeTable">Table</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="sourceMode" id="modeQuery"
+                                           value="query" @(Model.IsCustomQuery ? "checked" : "")>
+                                    <label class="form-check-label" for="modeQuery">Custom SQL Query</label>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Table display panel (read-only on edit) -->
+                    <div id="tableModePanel" class="col-md-5" style="@(Model.IsCustomQuery ? "display:none" : "")">
                         <label class="form-label fw-semibold">Source Table</label>
                         <input class="form-control" value="@Model.SourceTable" readonly />
                         <input type="hidden" asp-for="SourceTable" />
                         <div class="form-text">Source table cannot be changed. Create a new job to use a different table.</div>
                     </div>
+
+                    <!-- Custom query panel -->
+                    <div id="queryModePanel" class="col-12" style="@(!Model.IsCustomQuery ? "display:none" : "")">
+                        <div class="mb-2">
+                            <label asp-for="SourceQuery" class="form-label fw-semibold">SELECT Statement *</label>
+                            <textarea asp-for="SourceQuery" class="form-control font-monospace" rows="5"
+                                      placeholder="SELECT col1, col2 FROM dbo.MyTable WHERE IsActive = 1"></textarea>
+                            <div class="form-text">
+                                Write a full SELECT statement. For Upsert jobs, ensure the <code>ChangeDateField</code> column is included in the results.
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="previewQueryColsBtn">
+                            <i class="bi bi-search me-1"></i>Preview Columns
+                        </button>
+                    </div>
+
                     <div class="col-md-4">
                         <label asp-for="JobName" class="form-label fw-semibold">Job Name <span class="text-danger">*</span></label>
                         <input asp-for="JobName" class="form-control" />
@@ -242,6 +279,47 @@
     let selectedChangeDate = document.getElementById('ChangeDateField').value || '';
     const destDatabases = { @Html.Raw(string.Join(",", Model.AvailableDestinations.Select(d => $"{d.Id}:'{d.DefaultDatabase ?? ""}'"))) };
 
+    // ── Source mode toggle ────────────────────────────
+
+    document.querySelectorAll('input[name="sourceMode"]').forEach(radio => {
+        radio.addEventListener('change', function () {
+            const isQuery = this.value === 'query';
+            document.getElementById('tableModePanel').style.display = isQuery ? 'none' : '';
+            document.getElementById('queryModePanel').style.display = isQuery ? '' : 'none';
+        });
+    });
+
+    // ── Preview columns from custom query ─────────────
+
+    document.getElementById('previewQueryColsBtn')?.addEventListener('click', async function () {
+        const query = document.querySelector('[name="SourceQuery"]').value.trim();
+        if (!query) { alert('Enter a SELECT statement first.'); return; }
+
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+
+        try {
+            const resp = await fetch('/Servers/GetColumnsFromQuery?serverId=' + sourceServerId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(query)
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ error: resp.statusText }));
+                alert('Query error: ' + (err.error || resp.statusText));
+                return;
+            }
+            const cols = await resp.json();
+            renderFields(cols);
+            buildSqlPreview();
+        } catch (e) {
+            alert('Failed to preview columns: ' + e.message);
+        } finally {
+            this.disabled = false;
+            this.innerHTML = '<i class="bi bi-search me-1"></i>Preview Columns';
+        }
+    });
+
     document.getElementById('destServerSelect').addEventListener('change', function () {
         const db = destDatabases[this.value] || '';
         document.getElementById('destDatabaseHidden').value = db;
@@ -258,9 +336,29 @@
         document.getElementById('fieldsLoading').classList.remove('d-none');
         document.getElementById('fieldsContainer').innerHTML = '';
         document.getElementById('fieldsEmpty').classList.add('d-none');
+
+        const isQueryMode = document.getElementById('modeQuery')?.checked;
+
         try {
-            const resp = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(sourceTable)}`);
-            const cols = await resp.json();
+            let cols;
+            if (isQueryMode) {
+                const query = document.querySelector('[name="SourceQuery"]')?.value?.trim();
+                if (!query) {
+                    document.getElementById('fieldsEmpty').classList.remove('d-none');
+                    document.getElementById('fieldsEmpty').textContent = 'Enter a SELECT statement and click Preview Columns.';
+                    return;
+                }
+                const resp = await fetch('/Servers/GetColumnsFromQuery?serverId=' + sourceServerId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(query)
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+                cols = await resp.json();
+            } else {
+                const resp = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(sourceTable)}`);
+                cols = await resp.json();
+            }
             renderFields(cols);
         } catch(e) {
             document.getElementById('fieldsEmpty').classList.remove('d-none');
@@ -351,6 +449,12 @@
     }
 
     document.getElementById('jobForm').addEventListener('submit', function() {
+        // If in query mode, stamp SourceTable with sentinel so it round-trips correctly
+        if (document.getElementById('modeQuery')?.checked) {
+            const hiddenSrc = document.querySelector('input[name="SourceTable"][type="hidden"]');
+            if (hiddenSrc) hiddenSrc.value = '(Custom Query)';
+        }
+
         const rows = document.querySelectorAll('.field-check');
         if (!rows.length) return;
         const fields = [];

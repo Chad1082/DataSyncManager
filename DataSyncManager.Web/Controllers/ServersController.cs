@@ -384,6 +384,29 @@ public class ServersController : Controller
         return RedirectToAction(nameof(Destinations));
     }
 
+    [HttpPost]
+    public async Task<IActionResult> GetColumnsFromQuery(int serverId, [FromBody] string query)
+    {
+        var server = await _db.SourceServers.FindAsync(serverId);
+        if (server is null) return NotFound();
+
+        try
+        {
+            var cols = await _schema.GetColumnsFromQueryAsync(server, query);
+            return Json(cols.Select(c => new
+            {
+                name = c.Name,
+                dataType = c.DataType,
+                maxLength = c.MaxLength,
+                isNullable = c.IsNullable
+            }));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     // ── Helpers ──────────────────────────────────────
 
     private static string BuildDestinationConnectionString(string server, bool useWindowsAuth, string? username, string? password)

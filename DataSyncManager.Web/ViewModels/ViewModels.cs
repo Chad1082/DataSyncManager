@@ -288,6 +288,12 @@ public class JobFormViewModel
     [Required]
     public string SourceTable { get; set; } = string.Empty;
 
+    [MaxLength(4000)]
+    public string? SourceQuery { get; set; }
+
+    // Convenience: true when this job uses a custom query
+    public bool IsCustomQuery => !string.IsNullOrWhiteSpace(SourceQuery);
+
     // Destination
     [Required]
     public int DestinationServerId { get; set; }

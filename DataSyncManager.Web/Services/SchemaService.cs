@@ -24,6 +24,7 @@ public interface ISchemaService
     Task<bool> TestDestinationConnectionAsync(DestinationServer server);
     Task<List<string>> GetDatabasesAsync(string connectionString);
     Task<(bool ok, string message)> TestConnectionWithDatabaseAsync(string connectionString, string database);
+    Task<List<SchemaColumn>> GetColumnsFromQueryAsync(SourceServer server, string query);
 }
 
 public class SchemaService : ISchemaService
@@ -307,5 +308,73 @@ public class SchemaService : ISchemaService
             _log.LogWarning(ex, "TestConnectionWithDatabaseAsync failed for database {Database}", database);
             return (false, $"Connection failed: {ex.Message}");
         }
+    }
+
+    public async Task<List<SchemaColumn>> GetColumnsFromQueryAsync(SourceServer server, string query)
+    {
+        return server.SourceType switch
+        {
+            SourceType.SqlServer => await GetSqlServerColumnsFromQueryAsync(server.ConnectionString!, query),
+            SourceType.Odbc => await GetOdbcColumnsFromQueryAsync(server.ConnectionString!, query),
+            _ => new List<SchemaColumn>()
+        };
+    }
+
+    private async Task<List<SchemaColumn>> GetSqlServerColumnsFromQueryAsync(string cs, string query)
+    {
+        var cols = new List<SchemaColumn>();
+        await using var conn = new SqlConnection(cs);
+        await conn.OpenAsync();
+
+        // sp_describe_first_result_set is available on SQL Server 2012+ and is the
+        // safest way to get result-set metadata without executing the query.
+        var cmd = new SqlCommand("sys.sp_describe_first_result_set", conn)
+        {
+            CommandType = CommandType.StoredProcedure
+        };
+        cmd.Parameters.AddWithValue("@tsql", query);
+
+        await using var rdr = await cmd.ExecuteReaderAsync();
+        while (await rdr.ReadAsync())
+        {
+            cols.Add(new SchemaColumn
+            {
+                Name = rdr["name"].ToString()!,
+                DataType = rdr["system_type_name"].ToString()!
+                                .Split('(')[0],   // strip e.g. "nvarchar(50)" → "nvarchar"
+                MaxLength = rdr["max_length"] is DBNull ? -1
+                                : Convert.ToInt32(rdr["max_length"]),
+                IsNullable = rdr["is_nullable"] is not DBNull
+                                && Convert.ToBoolean(rdr["is_nullable"])
+            });
+        }
+        return cols;
+    }
+
+    private Task<List<SchemaColumn>> GetOdbcColumnsFromQueryAsync(string cs, string query)
+    {
+        var cols = new List<SchemaColumn>();
+        // Wrap with WHERE 1=0 to get schema with zero rows
+        var schemaQuery = $"SELECT * FROM ({query}) _q WHERE 1=0";
+
+        using var conn = new OdbcConnection(cs);
+        conn.Open();
+        using var cmd = new OdbcCommand(schemaQuery, conn);
+        using var rdr = cmd.ExecuteReader(CommandBehavior.SchemaOnly | CommandBehavior.KeyInfo);
+        var schemaTable = rdr.GetSchemaTable();
+
+        if (schemaTable is null) return Task.FromResult(cols);
+
+        foreach (DataRow row in schemaTable.Rows)
+        {
+            cols.Add(new SchemaColumn
+            {
+                Name = row["ColumnName"].ToString()!,
+                DataType = ((Type)row["DataType"]).Name.ToLower(),
+                MaxLength = row["ColumnSize"] is DBNull ? -1 : Convert.ToInt32(row["ColumnSize"]),
+                IsNullable = row["AllowDBNull"] is not DBNull && Convert.ToBoolean(row["AllowDBNull"])
+            });
+        }
+        return Task.FromResult(cols);
     }
 }

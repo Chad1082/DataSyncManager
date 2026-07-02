@@ -53,6 +53,8 @@ public class JobsController : Controller
         ModelState.Remove("ProjectName");
         ModelState.Remove("DestinationDatabase");
 
+
+
         // Auto-fill DestinationDatabase from the selected server's DefaultDatabase
         if (string.IsNullOrEmpty(vm.DestinationDatabase) && vm.DestinationServerId > 0)
         {
@@ -64,6 +66,10 @@ public class JobsController : Controller
 
         if (vm.SyncMode == SyncMode.Upsert && !vm.SyncStartDate.HasValue)
             ModelState.AddModelError(nameof(vm.SyncStartDate), "A start date is required for Upsert jobs.");
+
+        // Near the top of each POST action, before ModelState.IsValid check:
+        if (!string.IsNullOrWhiteSpace(vm.SourceQuery))
+            ModelState.Remove(nameof(vm.SourceTable)); // SourceTable not needed when using a query
 
         if (!ModelState.IsValid)
         {
@@ -95,6 +101,11 @@ public class JobsController : Controller
             CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
             SyncOverlapMinutes = vm.SyncOverlapMinutes
         };
+        // When mapping vm → job entity, add:
+        job.SourceQuery = string.IsNullOrWhiteSpace(vm.SourceQuery) ? null : vm.SourceQuery.Trim();
+        // If using a query, SourceTable stores a user-friendly label (optional, or derive one):
+        if (!string.IsNullOrWhiteSpace(vm.SourceQuery) && string.IsNullOrWhiteSpace(vm.SourceTable))
+            job.SourceTable = "(Custom Query)";
 
         _db.Jobs.Add(job);
         await _db.SaveChangesAsync();
@@ -141,6 +152,7 @@ public class JobsController : Controller
             SortOrder = job.SortOrder,
             IsActive = job.IsActive,
             SyncOverlapMinutes = job.SyncOverlapMinutes,
+            SourceQuery = job.SourceQuery,
             SelectedFieldsJson = JsonConvert.SerializeObject(job.JobFields.Select(f => new
             {
                 sourceFieldName = f.SourceFieldName,
@@ -173,6 +185,9 @@ public class JobsController : Controller
         if (string.IsNullOrEmpty(vm.DestinationDatabase))
             ModelState.AddModelError("DestinationDatabase", "The selected destination server has no default database configured.");
 
+        if (!string.IsNullOrWhiteSpace(vm.SourceQuery))
+            ModelState.Remove(nameof(vm.SourceTable)); // SourceTable not needed when using a query
+
         if (!ModelState.IsValid)
         {
             await PopulateVmAsync(vm);
@@ -203,6 +218,12 @@ public class JobsController : Controller
         job.UpdatedAt = DateTime.UtcNow;
         job.UpdatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         job.SyncOverlapMinutes = vm.SyncOverlapMinutes;
+
+        // When mapping vm → job entity, add:
+        job.SourceQuery = string.IsNullOrWhiteSpace(vm.SourceQuery) ? null : vm.SourceQuery.Trim();
+        // If using a query, SourceTable stores a user-friendly label (optional, or derive one):
+        if (!string.IsNullOrWhiteSpace(vm.SourceQuery) && string.IsNullOrWhiteSpace(vm.SourceTable))
+            job.SourceTable = "(Custom Query)";
 
         // Replace fields
         _db.JobFields.RemoveRange(job.JobFields);

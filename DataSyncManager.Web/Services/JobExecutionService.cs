@@ -505,14 +505,35 @@ public class JobExecutionService : IJobExecutionService
     }
 
     private async Task<DataTable> FetchSqlServerDataAsync(Job job, SourceServer src,
-        DateTime? from, DateTime? to, CancellationToken ct)
+    DateTime? from, DateTime? to, CancellationToken ct)
     {
         var dt = new DataTable();
-        var fields = string.Join(", ", job.JobFields.Select(f => $"[{f.SourceFieldName}]"));
-        var sql = $"SELECT {fields} FROM {job.SourceTable}";
+        string sql;
 
-        if (from.HasValue && to.HasValue && !string.IsNullOrEmpty(job.ChangeDateField))
-            sql += $" WHERE [{job.ChangeDateField}] >= @from AND [{job.ChangeDateField}] < @to";
+        if (!string.IsNullOrWhiteSpace(job.SourceQuery))
+        {
+            // Custom query — wrap as CTE for incremental filtering
+            if (from.HasValue && to.HasValue && !string.IsNullOrEmpty(job.ChangeDateField))
+            {
+                sql = $"""
+                WITH _src AS ({job.SourceQuery})
+                SELECT * FROM _src
+                WHERE [{job.ChangeDateField}] >= @from AND [{job.ChangeDateField}] < @to
+                """;
+            }
+            else
+            {
+                sql = job.SourceQuery;
+            }
+        }
+        else
+        {
+            // Original table-based path
+            var fields = string.Join(", ", job.JobFields.Select(f => $"[{f.SourceFieldName}]"));
+            sql = $"SELECT {fields} FROM {job.SourceTable}";
+            if (from.HasValue && to.HasValue && !string.IsNullOrEmpty(job.ChangeDateField))
+                sql += $" WHERE [{job.ChangeDateField}] >= @from AND [{job.ChangeDateField}] < @to";
+        }
 
         await ExecuteWithRetryAsync(src.RetryCount, src.RetryDelaySeconds, async () =>
         {
@@ -529,16 +550,36 @@ public class JobExecutionService : IJobExecutionService
     }
 
     private Task<DataTable> FetchOdbcDataAsync(Job job, SourceServer src,
-        DateTime? from, DateTime? to, CancellationToken ct)
+    DateTime? from, DateTime? to, CancellationToken ct)
     {
         var dt = new DataTable();
-        var fields = string.Join(", ", job.JobFields.Select(f => $"[{f.SourceFieldName}]"));
-        var sql = $"SELECT {fields} FROM {job.SourceTable}";
+        string sql;
 
-        if (from.HasValue && to.HasValue && !string.IsNullOrEmpty(job.ChangeDateField))
+        if (!string.IsNullOrWhiteSpace(job.SourceQuery))
         {
-            var fmt = src.SourceDateFormat;
-            sql += $" WHERE [{job.ChangeDateField}] >= '{from.Value.ToString(fmt)}' AND [{job.ChangeDateField}] < '{to.Value.ToString(fmt)}'";
+            if (from.HasValue && to.HasValue && !string.IsNullOrEmpty(job.ChangeDateField))
+            {
+                var fmt = src.SourceDateFormat;
+                sql = $"SELECT * FROM ({job.SourceQuery}) _q " +
+                      $"WHERE [{job.ChangeDateField}] >= '{from.Value.ToString(fmt)}' " +
+                      $"AND [{job.ChangeDateField}] < '{to.Value.ToString(fmt)}'";
+            }
+            else
+            {
+                sql = job.SourceQuery;
+            }
+        }
+        else
+        {
+            var fields = string.Join(", ", job.JobFields.Select(f => $"[{f.SourceFieldName}]"));
+            sql = $"SELECT {fields} FROM {job.SourceTable}";
+
+            if (from.HasValue && to.HasValue && !string.IsNullOrEmpty(job.ChangeDateField))
+            {
+                var fmt = src.SourceDateFormat;
+                sql += $" WHERE [{job.ChangeDateField}] >= '{from.Value.ToString(fmt)}' " +
+                       $"AND [{job.ChangeDateField}] < '{to.Value.ToString(fmt)}'";
+            }
         }
 
         using var conn = new OdbcConnection(src.ConnectionString);

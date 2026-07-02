@@ -63,20 +63,60 @@
             <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body">
                     <h6 class="text-muted text-uppercase fw-bold mb-3">Source</h6>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Source Table / Endpoint *</label>
-                        <input type="text" class="form-control form-control-sm mb-1" id="sourceTableSearch" placeholder="Search tables…" />
-                        <div class="input-group">
-                            <select id="sourceTableSelect" class="form-select">
-                                <option value="">— loading tables… —</option>
-                            </select>
-                            <input asp-for="SourceTable" type="hidden" id="sourceTableHidden" />
-                            <button type="button" class="btn btn-outline-secondary" id="loadTablesBtn">
-                                <i class="bi bi-arrow-clockwise"></i>
-                            </button>
+
+                    @if (Model.ProjectSourceServer?.SourceType != DataSyncManager.Web.Models.SourceType.RestApi)
+                    {
+                        <!-- Source Mode toggle (SQL Server / ODBC only) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Source Mode</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="sourceMode" id="modeTable"
+                                           value="table" @(Model.IsCustomQuery ? "" : "checked")>
+                                    <label class="form-check-label" for="modeTable">Table</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="sourceMode" id="modeQuery"
+                                           value="query" @(Model.IsCustomQuery ? "checked" : "")>
+                                    <label class="form-check-label" for="modeQuery">Custom SQL Query</label>
+                                </div>
+                            </div>
                         </div>
-                        <span asp-validation-for="SourceTable" class="text-danger small"></span>
+                    }
+
+                    <!-- Table selector panel -->
+                    <div id="tableModePanel" style="@(Model.IsCustomQuery ? "display:none" : "")">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Source Table / Endpoint *</label>
+                            <input type="text" class="form-control form-control-sm mb-1" id="sourceTableSearch" placeholder="Search tables…" />
+                            <div class="input-group">
+                                <select id="sourceTableSelect" class="form-select">
+                                    <option value="">— loading tables… —</option>
+                                </select>
+                                <input asp-for="SourceTable" type="hidden" id="sourceTableHidden" />
+                                <button type="button" class="btn btn-outline-secondary" id="loadTablesBtn">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                            <span asp-validation-for="SourceTable" class="text-danger small"></span>
+                        </div>
                     </div>
+
+                    <!-- Custom query panel -->
+                    <div id="queryModePanel" style="@(!Model.IsCustomQuery ? "display:none" : "")">
+                        <div class="mb-2">
+                            <label asp-for="SourceQuery" class="form-label fw-semibold">SELECT Statement *</label>
+                            <textarea asp-for="SourceQuery" class="form-control font-monospace" rows="5"
+                                      placeholder="SELECT col1, col2 FROM dbo.MyTable WHERE IsActive = 1"></textarea>
+                            <div class="form-text">
+                                Write a full SELECT statement. For Upsert jobs, ensure the <code>ChangeDateField</code> column is included in the results.
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="previewQueryColsBtn">
+                            <i class="bi bi-search me-1"></i>Preview Columns
+                        </button>
+                    </div>
+
                 </div>
             </div>
 
@@ -285,13 +325,58 @@
         let selectedChangeDate = '';
         const destDatabases = { @Html.Raw(string.Join(",", Model.AvailableDestinations.Select(d => $"{d.Id}:'{d.DefaultDatabase ?? ""}'"))) };
 
+        // ── Source mode toggle ────────────────────────────
+
+        document.querySelectorAll('input[name="sourceMode"]').forEach(radio => {
+            radio.addEventListener('change', function () {
+                const isQuery = this.value === 'query';
+                document.getElementById('tableModePanel').style.display = isQuery ? 'none' : '';
+                document.getElementById('queryModePanel').style.display = isQuery ? '' : 'none';
+                if (!isQuery) {
+                    document.getElementById('fieldsPlaceholder').style.display = '';
+                    document.getElementById('fieldsList').innerHTML = '';
+                    document.getElementById('fieldCount').textContent = '0 fields selected';
+                }
+            });
+        });
+
+        // ── Preview columns from custom query ─────────────
+
+        document.getElementById('previewQueryColsBtn')?.addEventListener('click', async function () {
+            const query = document.querySelector('[name="SourceQuery"]').value.trim();
+            if (!query) { alert('Enter a SELECT statement first.'); return; }
+
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+
+            try {
+                const resp = await fetch('/Servers/GetColumnsFromQuery?serverId=' + sourceServerId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(query)
+                });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({ error: resp.statusText }));
+                    alert('Query error: ' + (err.error || resp.statusText));
+                    return;
+                }
+                const cols = await resp.json();
+                await loadSourceColumns('__query__', cols);
+            } catch (e) {
+                alert('Failed to preview columns: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-search me-1"></i>Preview Columns';
+            }
+        });
+
         // ── Source table loading ──────────────────────────
 
         async function loadSourceTables() {
             const r = await fetch(`/Servers/GetSourceTables?serverId=${sourceServerId}`);
             allSourceTables = await r.json();
             filterSourceTables(document.getElementById('sourceTableSearch').value.toLowerCase());
-            if ('@Model.SourceTable') loadSourceColumns('@Model.SourceTable');
+            if ('@Model.SourceTable' && '@(Model.IsCustomQuery ? "false" : "true")' !== 'false') loadSourceColumns('@Model.SourceTable');
         }
 
         function filterSourceTables(query) {
@@ -306,11 +391,16 @@
             });
         }
 
-        async function loadSourceColumns(tableName) {
+        async function loadSourceColumns(tableName, preloadedCols) {
             document.getElementById('fieldsPlaceholder').style.display = '';
             document.getElementById('fieldsList').innerHTML = '';
-            const r = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(tableName)}`);
-            const cols = await r.json();
+            let cols;
+            if (preloadedCols) {
+                cols = preloadedCols;
+            } else {
+                const r = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(tableName)}`);
+                cols = await r.json();
+            }
 
             document.getElementById('fieldsPlaceholder').style.display = 'none';
             const list = document.getElementById('fieldsList');
@@ -467,6 +557,12 @@
         // ── Form submit: serialise all values before posting ─
 
         document.getElementById('jobForm').addEventListener('submit', function (e) {
+            // If in query mode, set SourceTable hidden to sentinel value
+            const isQueryMode = document.getElementById('modeQuery')?.checked;
+            if (isQueryMode) {
+                document.getElementById('sourceTableHidden').value = '(Custom Query)';
+            }
+
             // Sync destination table hidden field
             syncDestTable();
             if (!document.getElementById('destTableHidden').value) {
@@ -621,6 +717,14 @@
         document.getElementById('syncStartDateInput')?.addEventListener('change', buildSqlPreview);
 
         // ── Init ──────────────────────────────────────────
-        loadSourceTables();
+        const _initQueryMode = document.getElementById('modeQuery')?.checked;
+        if (!_initQueryMode) {
+            loadSourceTables();
+        } else {
+            // In query mode on load (e.g. edit page re-render after validation failure)
+            // Restore fields placeholder text
+            document.getElementById('fieldsPlaceholder').querySelector ? null :
+                document.getElementById('fieldsPlaceholder').textContent = 'Click Preview Columns to load fields from your query';
+        }
     </script>
 }
