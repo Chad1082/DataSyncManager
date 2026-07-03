@@ -57,7 +57,7 @@
                     <div id="queryModePanel" class="col-12" style="@(!Model.IsCustomQuery ? "display:none" : "")">
                         <div class="mb-2">
                             <label asp-for="SourceQuery" class="form-label fw-semibold">SELECT Statement *</label>
-                            <textarea asp-for="SourceQuery" class="form-control font-monospace" rows="5"
+                            <textarea asp-for="SourceQuery" class="form-control font-monospace" rows="5" maxlength="100000"
                                       placeholder="SELECT col1, col2 FROM dbo.MyTable WHERE IsActive = 1"></textarea>
                             <div class="form-text">
                                 Write a full SELECT statement. For Upsert jobs, ensure the <code>ChangeDateField</code> column is included in the results.
