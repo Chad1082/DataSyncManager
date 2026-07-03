@@ -385,6 +385,7 @@ public class ServersController : Controller
     }
 
     [HttpPost]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> GetColumnsFromQuery(int serverId, [FromBody] string query)
     {
         var server = await _db.SourceServers.FindAsync(serverId);
@@ -393,17 +394,22 @@ public class ServersController : Controller
         try
         {
             var cols = await _schema.GetColumnsFromQueryAsync(server, query);
-            return Json(cols.Select(c => new
+
+            var result = cols.Select(c => new
             {
                 name = c.Name,
                 dataType = c.DataType,
                 maxLength = c.MaxLength,
                 isNullable = c.IsNullable
-            }));
+            });
+
+            var json = System.Text.Json.JsonSerializer.Serialize(result);
+            return Content(json, "application/json", System.Text.Encoding.UTF8);
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = ex.Message });
+            var error = System.Text.Json.JsonSerializer.Serialize(new { error = ex.Message });
+            return BadRequest(error);
         }
     }
 
