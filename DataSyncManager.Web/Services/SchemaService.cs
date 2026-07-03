@@ -358,11 +358,11 @@ public class SchemaService : ISchemaService
         using var conn = new OdbcConnection(cs);
         conn.Open();
 
-        using var cmd = new OdbcCommand(query, conn);
-        cmd.CommandTimeout = 30;
+        // Wrap in TOP 0 to get schema with zero rows — ServiceNow ODBC supports this
+        // and doesn't support CommandBehavior.SchemaOnly or subquery aliasing
+        var schemaQuery = $"SELECT TOP 0 * FROM ({query}) _dsm_schema";
 
-        // Open the reader but don't call Read() — GetSchemaTable() on an 
-        // un-read reader returns column metadata without fetching any data rows
+        using var cmd = new OdbcCommand(schemaQuery, conn);
         using var rdr = cmd.ExecuteReader();
         var schemaTable = rdr.GetSchemaTable();
 

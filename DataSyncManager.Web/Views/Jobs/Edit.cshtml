@@ -291,34 +291,44 @@
 
     // ── Preview columns from custom query ─────────────
 
-    document.getElementById('previewQueryColsBtn')?.addEventListener('click', async function () {
-        const query = document.querySelector('[name="SourceQuery"]').value.trim();
-        if (!query) { alert('Enter a SELECT statement first.'); return; }
+            document.getElementById('previewQueryColsBtn')?.addEventListener('click', async function () {
+            const query = document.querySelector('[name="SourceQuery"]').value.trim();
+            if (!query) { alert('Enter a SELECT statement first.'); return; }
 
-        this.disabled = true;
-        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
 
-        try {
-            const resp = await fetch('/Servers/GetColumnsFromQuery?serverId=' + sourceServerId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(query)
-            });
-            if (!resp.ok) {
-                    const errText = await resp.text();
-        alert('Query error: ' + errText);
-        return;
+            try {
+                const resp = await fetch('/Servers/GetColumnsFromQuery?serverId=' + sourceServerId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(query)
+                });
+
+                const text = await resp.text();
+
+                if (!resp.ok) {
+                    alert('Query error: ' + text);
+                    return;
+                }
+
+                let cols;
+                try {
+                    cols = JSON.parse(text.replace(/^\uFEFF/, '').trim());
+                } catch (parseErr) {
+                    alert('Parse failed. First 500 chars:\n' + text.substring(0, 500));
+                    return;
+                }
+
+                renderFields(cols);
+                buildSqlPreview();
+            } catch (e) {
+                alert('Request failed: ' + e.message);
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-search me-1"></i>Preview Columns';
             }
-            const cols = await resp.json();
-            renderFields(cols);
-            buildSqlPreview();
-        } catch (e) {
-            alert('Failed to preview columns: ' + e.message);
-        } finally {
-            this.disabled = false;
-            this.innerHTML = '<i class="bi bi-search me-1"></i>Preview Columns';
-        }
-    });
+        });
 
     document.getElementById('destServerSelect').addEventListener('change', function () {
         const db = destDatabases[this.value] || '';

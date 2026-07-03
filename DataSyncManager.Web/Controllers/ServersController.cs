@@ -387,28 +387,26 @@ public class ServersController : Controller
     [HttpPost]
     [DisableRequestSizeLimit]
     public async Task<IActionResult> GetColumnsFromQuery(int serverId, [FromBody] string query)
-    {
-        var server = await _db.SourceServers.FindAsync(serverId);
-        if (server is null) return NotFound();
+{
+    var server = await _db.SourceServers.FindAsync(serverId);
+    if (server is null) return NotFound();
 
-        try
+    try
+    {
+        var cols = await _schema.GetColumnsFromQueryAsync(server, query);
+        return Json(cols.Select(c => new
         {
-            var cols = await _schema.GetColumnsFromQueryAsync(server, query);
-            var json = System.Text.Json.JsonSerializer.Serialize(cols.Select(c => new
-            {
-                name = c.Name,
-                dataType = c.DataType,
-                maxLength = c.MaxLength,
-                isNullable = c.IsNullable
-            }));
-            return Content(json, "application/json", System.Text.Encoding.UTF8);
-        }
-        catch (Exception ex)
-        {
-            // Return plain text so the JS error handler can display it directly
-            return StatusCode(500, ex.Message);
-        }
+            name       = c.Name,
+            dataType   = c.DataType,
+            maxLength  = c.MaxLength,
+            isNullable = c.IsNullable
+        }));
     }
+    catch (Exception ex)
+    {
+        return StatusCode(500, ex.Message);
+    }
+}
 
     // ── Helpers ──────────────────────────────────────
 
