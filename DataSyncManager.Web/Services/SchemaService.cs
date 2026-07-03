@@ -354,13 +354,16 @@ public class SchemaService : ISchemaService
     private Task<List<SchemaColumn>> GetOdbcColumnsFromQueryAsync(string cs, string query)
     {
         var cols = new List<SchemaColumn>();
-        // Wrap with WHERE 1=0 to get schema with zero rows
-        var schemaQuery = $"SELECT * FROM ({query}) _q WHERE 1=0";
 
         using var conn = new OdbcConnection(cs);
         conn.Open();
-        using var cmd = new OdbcCommand(schemaQuery, conn);
-        using var rdr = cmd.ExecuteReader(CommandBehavior.SchemaOnly);
+
+        using var cmd = new OdbcCommand(query, conn);
+        cmd.CommandTimeout = 30;
+
+        // Open the reader but don't call Read() — GetSchemaTable() on an 
+        // un-read reader returns column metadata without fetching any data rows
+        using var rdr = cmd.ExecuteReader();
         var schemaTable = rdr.GetSchemaTable();
 
         if (schemaTable is null) return Task.FromResult(cols);
