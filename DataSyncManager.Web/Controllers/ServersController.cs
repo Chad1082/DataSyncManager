@@ -394,22 +394,19 @@ public class ServersController : Controller
         try
         {
             var cols = await _schema.GetColumnsFromQueryAsync(server, query);
-
-            var result = cols.Select(c => new
+            var json = System.Text.Json.JsonSerializer.Serialize(cols.Select(c => new
             {
                 name = c.Name,
                 dataType = c.DataType,
                 maxLength = c.MaxLength,
                 isNullable = c.IsNullable
-            });
-
-            var json = System.Text.Json.JsonSerializer.Serialize(result);
+            }));
             return Content(json, "application/json", System.Text.Encoding.UTF8);
         }
         catch (Exception ex)
         {
-            var error = System.Text.Json.JsonSerializer.Serialize(new { error = ex.Message });
-            return BadRequest(error);
+            // Return plain text so the JS error handler can display it directly
+            return StatusCode(500, ex.Message);
         }
     }
 

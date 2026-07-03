@@ -360,7 +360,7 @@ public class SchemaService : ISchemaService
         using var conn = new OdbcConnection(cs);
         conn.Open();
         using var cmd = new OdbcCommand(schemaQuery, conn);
-        using var rdr = cmd.ExecuteReader(CommandBehavior.SchemaOnly | CommandBehavior.KeyInfo);
+        using var rdr = cmd.ExecuteReader(CommandBehavior.SchemaOnly);
         var schemaTable = rdr.GetSchemaTable();
 
         if (schemaTable is null) return Task.FromResult(cols);

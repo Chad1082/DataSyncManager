@@ -305,9 +305,9 @@
                 body: JSON.stringify(query)
             });
             if (!resp.ok) {
-                const err = await resp.json().catch(() => ({ error: resp.statusText }));
-                alert('Query error: ' + (err.error || resp.statusText));
-                return;
+                    const errText = await resp.text();
+        alert('Query error: ' + errText);
+        return;
             }
             const cols = await resp.json();
             renderFields(cols);
