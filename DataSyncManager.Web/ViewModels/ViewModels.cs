@@ -132,7 +132,7 @@ public class SourceServerViewModel
     public SourceType SourceType { get; set; }
 
     [MaxLength(500)]
-    public string? ConnectionString { get; set; }
+    public string? ConnectionString { get; set; }   // used directly only for ODBC now
 
     [MaxLength(500)]
     public string? BaseUrl { get; set; }
@@ -142,6 +142,19 @@ public class SourceServerViewModel
 
     [MaxLength(200)]
     public string? DefaultDatabase { get; set; }
+
+    // ── NEW: SQL Server connection builder fields ──
+    public bool UseWindowsAuth { get; set; } = true;
+
+    [MaxLength(500), Display(Name = "Server Address")]
+    public string? ServerAddress { get; set; }
+
+    [MaxLength(200), Display(Name = "Username")]
+    public string? SqlUsername { get; set; }
+
+    [Display(Name = "Password")]
+    public string? SqlPassword { get; set; }
+    // ─────────────────────────────────────────────
 
     [Range(1, 10)]
     public int RetryCount { get; set; } = 3;

@@ -42,10 +42,87 @@
                 </div>
             </div>
 
-            <!-- SQL Server / ODBC panel -->
-            <div class="card shadow-sm mb-4" id="connStringPanel">
+            <!-- SQL Server connection builder panel -->
+            <div class="card shadow-sm mb-4 d-none" id="sqlBuilderPanel">
                 <div class="card-header fw-semibold">
                     <i class="bi bi-server me-2"></i>Connection
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label asp-for="ServerAddress" class="form-label fw-semibold">Server Address <span class="text-danger">*</span></label>
+                        <input asp-for="ServerAddress" class="form-control" placeholder="e.g. localhost\SQLEXPRESS  or  192.168.1.10" />
+                        <span asp-validation-for="ServerAddress" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Authentication</label>
+                        <div class="d-flex gap-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="UseWindowsAuth" id="srcAuthWindows"
+                                       value="true" @(Model.UseWindowsAuth ? "checked" : "") />
+                                <label class="form-check-label" for="srcAuthWindows">Windows Authentication</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="UseWindowsAuth" id="srcAuthSql"
+                                       value="false" @(!Model.UseWindowsAuth ? "checked" : "") />
+                                <label class="form-check-label" for="srcAuthSql">SQL Server Authentication</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="srcSqlAuthPanel" class="@(Model.UseWindowsAuth ? "d-none" : "") mb-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label asp-for="SqlUsername" class="form-label fw-semibold">Username</label>
+                                <input asp-for="SqlUsername" class="form-control" placeholder="sa" autocomplete="username" />
+                                <span asp-validation-for="SqlUsername" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-6">
+                                <label asp-for="SqlPassword" class="form-label fw-semibold">Password</label>
+                                <input asp-for="SqlPassword" class="form-control" type="password" autocomplete="current-password" />
+                                @if (isEdit)
+                                {
+                                    <div class="form-text">Leave blank to keep the existing password.</div>
+                                }
+                                <span asp-validation-for="SqlPassword" class="text-danger small"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Database <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <select id="srcDatabaseSelect" class="form-select">
+                                @if (!string.IsNullOrEmpty(Model.DefaultDatabase))
+                                {
+                                    <option value="@Model.DefaultDatabase" selected>@Model.DefaultDatabase</option>
+                                }
+                                else
+                                {
+                                    <option value="">— enter server details, then click Load —</option>
+                                }
+                            </select>
+                            <button type="button" class="btn btn-outline-secondary" id="srcLoadDbsBtn">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Load
+                            </button>
+                        </div>
+                        <input asp-for="DefaultDatabase" type="hidden" id="srcDefaultDatabaseHidden" />
+                        <span asp-validation-for="DefaultDatabase" class="text-danger small"></span>
+                    </div>
+
+                    <div class="mb-1">
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="srcTestConnBtn">
+                            <i class="bi bi-plug me-1"></i>Test Connection
+                        </button>
+                        <span id="srcTestConnResult" class="ms-2 small"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ODBC panel -->
+            <div class="card shadow-sm mb-4" id="connStringPanel">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-plug me-2"></i>Connection
                 </div>
                 <div class="card-body">
                     <div id="dsnPickerPanel" class="d-none mb-3">
@@ -82,7 +159,7 @@
                     </div>
                     <label asp-for="ConnectionString" class="form-label fw-semibold">Connection String <span class="text-danger">*</span></label>
                     <textarea asp-for="ConnectionString" id="connStringInput" class="form-control font-monospace" rows="3"
-                              placeholder="Server=.;Database=MyDb;Trusted_Connection=True;TrustServerCertificate=True;"></textarea>
+                              placeholder="DSN=MyDSN;Uid=myUser;Pwd=myPass;"></textarea>
                     <span asp-validation-for="ConnectionString" class="text-danger small"></span>
                     <div id="connStringHint" class="form-text"></div>
                 </div>
@@ -182,46 +259,37 @@
     <script>
     (function () {
         const typeSelect    = document.getElementById('sourceTypeSelect');
+        const sqlPanel      = document.getElementById('sqlBuilderPanel');
         const connPanel     = document.getElementById('connStringPanel');
         const restPanel     = document.getElementById('restApiPanel');
         const odbcPanel     = document.getElementById('odbcOptionsPanel');
         const connInput     = document.getElementById('connStringInput');
         const connHint      = document.getElementById('connStringHint');
 
-        const hints = {
-            SqlServer: {
-                placeholder: 'Server=.;Database=MyDb;Trusted_Connection=True;TrustServerCertificate=True;',
-                hint: 'Standard SQL Server connection string. Use <code>TrustServerCertificate=True</code> for self-signed certs.',
-                showDsnPicker: false
-            },
-            Odbc: {
-                placeholder: 'DSN=MyDSN;Uid=myUser;Pwd=myPass;',
-                hint: 'Select a DSN above to build the connection string, or type it manually.',
-                showDsnPicker: true
-            }
+        const odbcHint = {
+            placeholder: 'DSN=MyDSN;Uid=myUser;Pwd=myPass;',
+            hint: 'Select a DSN above to build the connection string, or type it manually.'
         };
 
         async function toggle() {
             const isRest = typeSelect.value === 'RestApi';
             const isOdbc = typeSelect.value === 'Odbc';
-            connPanel.classList.toggle('d-none', isRest);
+            const isSql  = typeSelect.value === 'SqlServer';
+
+            sqlPanel.classList.toggle('d-none', !isSql);
+            connPanel.classList.toggle('d-none', !isOdbc);
             restPanel.classList.toggle('d-none', !isRest);
             odbcPanel.classList.toggle('d-none', !isOdbc);
 
-            if (!isRest) {
-                const cfg = hints[typeSelect.value] || hints.SqlServer;
-                connInput.placeholder = cfg.placeholder;
-                connHint.innerHTML    = cfg.hint;
+            if (isOdbc) {
+                connInput.placeholder = odbcHint.placeholder;
+                connHint.innerHTML    = odbcHint.hint;
 
                 const dsnPanel = document.getElementById('dsnPickerPanel');
-                if (cfg.showDsnPicker) {
-                    dsnPanel.classList.remove('d-none');
-                    if (!dsnPanel.dataset.loaded) {
-                        await loadDsns();
-                        dsnPanel.dataset.loaded = '1';
-                    }
-                } else {
-                    dsnPanel.classList.add('d-none');
+                dsnPanel.classList.remove('d-none');
+                if (!dsnPanel.dataset.loaded) {
+                    await loadDsns();
+                    dsnPanel.dataset.loaded = '1';
                 }
             }
         }
@@ -264,14 +332,101 @@
             if (uid) cs += `Uid=${uid};`;
             if (pwd) cs += `Pwd=${pwd};`;
             document.getElementById('connStringInput').value = cs;
-        }
+        };
 
-        window.setDateFmt = function(fmt) {
+        window.setDateFmt = function (fmt) {
             document.getElementById('sourceDateFormatInput').value = fmt;
         };
 
         typeSelect.addEventListener('change', toggle);
         toggle();
     })();
+    </script>
+
+    <script>
+    // ── SQL Server connection builder (mirrors Destinations' probe flow) ──
+    document.querySelectorAll('input[name="UseWindowsAuth"]').forEach(r =>
+        r.addEventListener('change', function () {
+            document.getElementById('srcSqlAuthPanel').classList.toggle('d-none', this.value === 'true');
+        })
+    );
+
+    function srcGetProbePayload(includeDb) {
+        const server    = document.getElementById('ServerAddress').value.trim();
+        const useWin    = document.querySelector('input[name="UseWindowsAuth"]:checked').value === 'true';
+        const username  = document.getElementById('SqlUsername')?.value?.trim() || null;
+        const password  = document.getElementById('SqlPassword')?.value || null;
+        const database  = includeDb ? (document.getElementById('srcDefaultDatabaseHidden').value || null) : null;
+        return { server, useWindowsAuth: useWin, username, password, database };
+    }
+
+    async function srcPostProbe(url, data) {
+        const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+            body: JSON.stringify(data)
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return resp.json();
+    }
+
+    document.getElementById('srcLoadDbsBtn').addEventListener('click', async function () {
+        const payload = srcGetProbePayload(false);
+        if (!payload.server) { alert('Enter a server address first.'); return; }
+        if (!payload.useWindowsAuth && !payload.username) { alert('Enter a username for SQL Server authentication.'); return; }
+
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading…';
+        try {
+            const databases = await srcPostProbe('/Servers/ProbeDestinationDatabases', payload);
+            const sel = document.getElementById('srcDatabaseSelect');
+            const current = document.getElementById('srcDefaultDatabaseHidden').value;
+            sel.innerHTML = '<option value="">— select a database —</option>';
+            if (!databases.length) {
+                sel.innerHTML = '<option value="">No databases found — check permissions</option>';
+            } else {
+                databases.forEach(db => {
+                    const opt = document.createElement('option');
+                    opt.value = db; opt.textContent = db;
+                    if (db === current) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+            }
+        } catch (e) {
+            alert('Failed to load databases: ' + e.message);
+        } finally {
+            this.disabled = false;
+            this.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Load';
+        }
+    });
+
+    document.getElementById('srcDatabaseSelect').addEventListener('change', function () {
+        document.getElementById('srcDefaultDatabaseHidden').value = this.value;
+        document.getElementById('srcTestConnResult').textContent = '';
+    });
+
+    document.getElementById('srcTestConnBtn').addEventListener('click', async function () {
+        const payload = srcGetProbePayload(true);
+        if (!payload.server) { alert('Enter a server address first.'); return; }
+        if (!payload.database) { alert('Select a database first.'); return; }
+
+        const result = document.getElementById('srcTestConnResult');
+        this.disabled = true;
+        result.className = 'ms-2 small text-muted';
+        result.textContent = 'Testing…';
+        try {
+            const data = await srcPostProbe('/Servers/ProbeDestinationConnection', payload);
+            result.className = 'ms-2 small ' + (data.ok ? 'text-success' : 'text-danger');
+            result.innerHTML = (data.ok
+                ? '<i class="bi bi-check-circle me-1"></i>'
+                : '<i class="bi bi-x-circle me-1"></i>') + data.message;
+        } catch (e) {
+            result.className = 'ms-2 small text-danger';
+            result.textContent = 'Error: ' + e.message;
+        } finally {
+            this.disabled = false;
+        }
+    });
     </script>
 }

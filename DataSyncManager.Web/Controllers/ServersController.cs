@@ -48,13 +48,27 @@ public class ServersController : Controller
     [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateSource(SourceServerViewModel vm)
     {
+        ModelState.Remove("ConnectionString"); // built server-side for SqlServer; raw for Odbc
+
+        if (vm.SourceType == SourceType.SqlServer)
+        {
+            if (!vm.UseWindowsAuth && string.IsNullOrEmpty(vm.SqlPassword))
+                ModelState.AddModelError("SqlPassword", "Password is required for SQL Server Authentication.");
+            if (string.IsNullOrEmpty(vm.DefaultDatabase))
+                ModelState.AddModelError("DefaultDatabase", "Select a database.");
+        }
+
         if (!ModelState.IsValid) return View(vm);
+
+        var connectionString = vm.SourceType == SourceType.SqlServer
+            ? BuildSourceConnectionString(vm.ServerAddress!, vm.UseWindowsAuth, vm.SqlUsername, vm.SqlPassword, vm.DefaultDatabase)
+            : vm.ConnectionString;
 
         var server = new SourceServer
         {
             Name = vm.Name,
             SourceType = vm.SourceType,
-            ConnectionString = vm.ConnectionString,
+            ConnectionString = connectionString,
             BaseUrl = vm.BaseUrl,
             AuthHeader = vm.AuthHeader,
             DefaultDatabase = vm.DefaultDatabase,
@@ -78,31 +92,96 @@ public class ServersController : Controller
         var s = await _db.SourceServers.FindAsync(id);
         if (s is null) return NotFound();
 
-        return View(new SourceServerViewModel
+        var vm = new SourceServerViewModel
         {
-            Id = s.Id, Name = s.Name, SourceType = s.SourceType,
-            ConnectionString = s.ConnectionString, BaseUrl = s.BaseUrl, AuthHeader = s.AuthHeader,
-            DefaultDatabase = s.DefaultDatabase, RetryCount = s.RetryCount,
-            RetryDelaySeconds = s.RetryDelaySeconds, SourceDateFormat = s.SourceDateFormat,
-            OdbcCommandTimeout = s.OdbcCommandTimeout, IsActive = s.IsActive
-        });
+            Id = s.Id,
+            Name = s.Name,
+            SourceType = s.SourceType,
+            ConnectionString = s.ConnectionString,
+            BaseUrl = s.BaseUrl,
+            AuthHeader = s.AuthHeader,
+            DefaultDatabase = s.DefaultDatabase,
+            RetryCount = s.RetryCount,
+            RetryDelaySeconds = s.RetryDelaySeconds,
+            SourceDateFormat = s.SourceDateFormat,
+            OdbcCommandTimeout = s.OdbcCommandTimeout,
+            IsActive = s.IsActive,
+            UseWindowsAuth = true
+        };
+
+        if (s.SourceType == SourceType.SqlServer && !string.IsNullOrEmpty(s.ConnectionString))
+        {
+            try
+            {
+                var csb = new SqlConnectionStringBuilder(s.ConnectionString);
+                vm.ServerAddress = csb.DataSource;
+                vm.UseWindowsAuth = csb.IntegratedSecurity;
+                vm.SqlUsername = string.IsNullOrEmpty(csb.UserID) ? null : csb.UserID;
+                if (string.IsNullOrEmpty(vm.DefaultDatabase) && !string.IsNullOrEmpty(csb.InitialCatalog))
+                    vm.DefaultDatabase = csb.InitialCatalog;
+            }
+            catch { /* leave fields empty if parse fails */ }
+        }
+
+        return View(vm);
     }
 
     [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> EditSource(int id, SourceServerViewModel vm)
     {
+        ModelState.Remove("ConnectionString");
+
+        if (vm.SourceType == SourceType.SqlServer)
+        {
+            ModelState.Remove("SqlPassword"); // optional on edit — keep existing if blank
+            if (string.IsNullOrEmpty(vm.DefaultDatabase))
+                ModelState.AddModelError("DefaultDatabase", "Select a database.");
+        }
+
         if (!ModelState.IsValid) return View(vm);
 
         var s = await _db.SourceServers.FindAsync(id);
         if (s is null) return NotFound();
 
         s.Name = vm.Name; s.SourceType = vm.SourceType;
-        s.ConnectionString = vm.ConnectionString; s.BaseUrl = vm.BaseUrl;
-        s.AuthHeader = vm.AuthHeader; s.DefaultDatabase = vm.DefaultDatabase;
+        s.BaseUrl = vm.BaseUrl; s.AuthHeader = vm.AuthHeader; s.DefaultDatabase = vm.DefaultDatabase;
         s.RetryCount = vm.RetryCount; s.RetryDelaySeconds = vm.RetryDelaySeconds;
         s.SourceDateFormat = string.IsNullOrWhiteSpace(vm.SourceDateFormat) ? "yyyy-MM-dd HH:mm:ss" : vm.SourceDateFormat.Trim();
         s.OdbcCommandTimeout = vm.OdbcCommandTimeout;
         s.IsActive = vm.IsActive;
+
+        if (vm.SourceType == SourceType.SqlServer)
+        {
+            if (vm.UseWindowsAuth)
+            {
+                s.ConnectionString = BuildSourceConnectionString(vm.ServerAddress!, true, null, null, vm.DefaultDatabase);
+            }
+            else if (!string.IsNullOrEmpty(vm.SqlPassword))
+            {
+                s.ConnectionString = BuildSourceConnectionString(vm.ServerAddress!, false, vm.SqlUsername, vm.SqlPassword, vm.DefaultDatabase);
+            }
+            else if (!string.IsNullOrEmpty(s.ConnectionString))
+            {
+                // Keep existing password, update server/username/database
+                var csb = new SqlConnectionStringBuilder(s.ConnectionString)
+                {
+                    DataSource = vm.ServerAddress,
+                    InitialCatalog = vm.DefaultDatabase,
+                    TrustServerCertificate = true
+                };
+                if (!string.IsNullOrEmpty(vm.SqlUsername)) csb.UserID = vm.SqlUsername;
+                s.ConnectionString = csb.ConnectionString;
+            }
+            else
+            {
+                ModelState.AddModelError("SqlPassword", "Password is required.");
+                return View(vm);
+            }
+        }
+        else
+        {
+            s.ConnectionString = vm.ConnectionString; // ODBC raw string (REST API doesn't use it)
+        }
 
         await _db.SaveChangesAsync();
         TempData["Success"] = "Source server updated.";
@@ -413,6 +492,15 @@ public class ServersController : Controller
     private static string BuildDestinationConnectionString(string server, bool useWindowsAuth, string? username, string? password)
     {
         var b = new SqlConnectionStringBuilder { DataSource = server, TrustServerCertificate = true };
+        if (useWindowsAuth) b.IntegratedSecurity = true;
+        else { b.UserID = username ?? ""; b.Password = password ?? ""; }
+        return b.ConnectionString;
+    }
+
+    private static string BuildSourceConnectionString(string server, bool useWindowsAuth, string? username, string? password, string? database)
+    {
+        var b = new SqlConnectionStringBuilder { DataSource = server, TrustServerCertificate = true };
+        if (!string.IsNullOrEmpty(database)) b.InitialCatalog = database;
         if (useWindowsAuth) b.IntegratedSecurity = true;
         else { b.UserID = username ?? ""; b.Password = password ?? ""; }
         return b.ConnectionString;
