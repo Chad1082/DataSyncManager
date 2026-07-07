@@ -358,13 +358,18 @@ public class SchemaService : ISchemaService
         using var conn = new OdbcConnection(cs);
         conn.Open();
 
-        // Wrap in TOP 0 to get schema with zero rows — ServiceNow ODBC supports this
-        // and doesn't support CommandBehavior.SchemaOnly or subquery aliasing
-        var schemaQuery = $"SELECT TOP 0 * FROM ({query}) _dsm_schema";
+        // ServiceNow ODBC does not support CommandBehavior.SchemaOnly or subquery
+        // aliasing, so we inject TOP 0 into the original SELECT instead of wrapping
+        // the query in an aliased subquery.
+        var schemaQuery = System.Text.RegularExpressions.Regex.Replace(
+            query.TrimStart(),
+            @"^\s*SELECT\s+",
+            "SELECT TOP 0 ",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         using var cmd = new OdbcCommand(schemaQuery, conn);
-        using var rdr = cmd.ExecuteReader();
-        var schemaTable = rdr.GetSchemaTable();
+        using var rdr = cmd.ExecuteReader(); // plain ExecuteReader — no CommandBehavior.SchemaOnly
+        var schemaTable = rdr.GetSchemaTable(); // must be called before Read()
 
         if (schemaTable is null) return Task.FromResult(cols);
 
@@ -375,7 +380,7 @@ public class SchemaService : ISchemaService
                 Name = row["ColumnName"].ToString()!,
                 DataType = ((Type)row["DataType"]).Name.ToLower(),
                 MaxLength = row["ColumnSize"] is DBNull ? -1 : Convert.ToInt32(row["ColumnSize"]),
-                IsNullable = row["AllowDBNull"] is not DBNull && Convert.ToBoolean(row["AllowDBNull"])
+                IsNullable = row["AllowDBNull"] is DBNull ? true : Convert.ToBoolean(row["AllowDBNull"])
             });
         }
         return Task.FromResult(cols);

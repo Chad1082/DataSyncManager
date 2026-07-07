@@ -402,15 +402,30 @@
         }
 
         async function loadSourceColumns(tableName, preloadedCols) {
-            document.getElementById('fieldsPlaceholder').style.display = '';
-            document.getElementById('fieldsList').innerHTML = '';
-            let cols;
-            if (preloadedCols) {
-                cols = preloadedCols;
-            } else {
-                const r = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(tableName)}`);
-                cols = await r.json();
-            }
+                document.getElementById('fieldsPlaceholder').style.display = '';
+                document.getElementById('fieldsList').innerHTML = '';
+                let cols;
+
+                if (preloadedCols) {
+                    cols = preloadedCols;
+                } else if (tableName === '__query__') {
+                    // Custom-query mode has no real table to fall back to. Reaching here
+                    // means the query preview failed upstream — never call
+                    // GetSourceColumns with the sentinel value, it will always 500.
+                    document.getElementById('fieldsPlaceholder').style.display = '';
+                    document.getElementById('fieldsPlaceholder').textContent =
+                        'Preview failed to load columns. Click Preview Columns to try again.';
+                    return;
+                } else {
+                    const r = await fetch(`/Servers/GetSourceColumns?serverId=${sourceServerId}&tableName=${encodeURIComponent(tableName)}`);
+                    if (!r.ok) {
+                        document.getElementById('fieldsPlaceholder').style.display = '';
+                        document.getElementById('fieldsPlaceholder').textContent =
+                            'Failed to load columns: ' + (await r.text());
+                        return;
+                    }
+                    cols = await r.json();
+                }
 
             document.getElementById('fieldsPlaceholder').style.display = 'none';
             const list = document.getElementById('fieldsList');
@@ -684,8 +699,8 @@
 
         // Re-run preview after columns load
         const _origLoadSourceColumns = loadSourceColumns;
-        loadSourceColumns = async function(t) {
-            await _origLoadSourceColumns(t);
+             loadSourceColumns = async function(t, preloaded) {
+            await _origLoadSourceColumns(t, preloaded);
             buildSqlPreview();
         };
 
