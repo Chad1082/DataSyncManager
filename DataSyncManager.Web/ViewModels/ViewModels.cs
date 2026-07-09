@@ -333,8 +333,10 @@ public class JobFormViewModel
 
     // Alerts
     public AlertOn JobAlertOn { get; set; } = AlertOn.None;
-    // Convenience alias used in views
-    public AlertOn AlertOn => JobAlertOn;
+
+    public bool AlertOnSuccess { get; set; }
+    public bool AlertOnFailure { get; set; }
+    public bool AlertOnError { get; set; }
 
     [MaxLength(2000)]
     public string? AlertEmailAddresses { get; set; }

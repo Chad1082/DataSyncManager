@@ -200,24 +200,14 @@
                     <div class="col-12">
                         <label class="form-label fw-semibold">Alert on</label>
                         <div class="d-flex gap-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="AlertOnSuccess"
-                                       id="jAlertSuccess" value="true"
-                                       @(((int)Model.AlertOn & 1) != 0 ? "checked" : "")>
-                                <label class="form-check-label" for="jAlertSuccess">Success</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="AlertOnFailure"
-                                       id="jAlertFailure" value="true"
-                                       @(((int)Model.AlertOn & 2) != 0 ? "checked" : "")>
-                                <label class="form-check-label" for="jAlertFailure">Failure</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="AlertOnError"
-                                       id="jAlertError" value="true"
-                                       @(((int)Model.AlertOn & 4) != 0 ? "checked" : "")>
-                                <label class="form-check-label" for="jAlertError">Errors</label>
-                            </div>
+                            <input asp-for="AlertOnSuccess" class="form-check-input" id="jAlertSuccess" />
+                            <label class="form-check-label" for="jAlertSuccess">Success</label>
+
+                            <input asp-for="AlertOnFailure" class="form-check-input" id="jAlertFailure" />
+                            <label class="form-check-label" for="jAlertFailure">Failure</label>
+
+                            <input asp-for="AlertOnError" class="form-check-input" id="jAlertError" />
+                            <label class="form-check-label" for="jAlertError">Errors</label>
                         </div>
                     </div>
                     <div class="col-md-7">

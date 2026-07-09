@@ -38,6 +38,7 @@ public class JobsController : Controller
             ProjectId = projectId,
             ProjectName = project.Name,
             ProjectSourceServer = project.SourceServer,
+            AlertEmailAddresses = project.AlertEmailAddresses,   // NEW — default from project
             AvailableDestinations = await _db.DestinationServers
                 .Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync()
         };
@@ -77,6 +78,10 @@ public class JobsController : Controller
             return View(vm);
         }
 
+        vm.JobAlertOn = (vm.AlertOnSuccess ? AlertOn.Success : AlertOn.None)
+              | (vm.AlertOnFailure ? AlertOn.Failure : AlertOn.None)
+              | (vm.AlertOnError ? AlertOn.Error : AlertOn.None);
+
         var job = new Job
         {
             ProjectId = vm.ProjectId,
@@ -101,6 +106,7 @@ public class JobsController : Controller
             CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
             SyncOverlapMinutes = vm.SyncOverlapMinutes
         };
+        
         // When mapping vm → job entity, add:
         job.SourceQuery = string.IsNullOrWhiteSpace(vm.SourceQuery) ? null : vm.SourceQuery.Trim();
         // If using a query, SourceTable stores a user-friendly label (optional, or derive one):
@@ -148,6 +154,9 @@ public class JobsController : Controller
             DaysPerBatch = job.DaysPerBatch,
             SyncStartDate = job.SyncStartDate,
             JobAlertOn = job.JobAlertOn,
+            AlertOnSuccess = job.JobAlertOn.HasFlag(AlertOn.Success),
+            AlertOnFailure = job.JobAlertOn.HasFlag(AlertOn.Failure),
+            AlertOnError = job.JobAlertOn.HasFlag(AlertOn.Error),
             AlertEmailAddresses = job.AlertEmailAddresses,
             SortOrder = job.SortOrder,
             IsActive = job.IsActive,
@@ -197,6 +206,10 @@ public class JobsController : Controller
         var job = await _db.Jobs.Include(j => j.JobFields).FirstOrDefaultAsync(j => j.Id == id);
         if (job is null) return NotFound();
 
+        vm.JobAlertOn = (vm.AlertOnSuccess ? AlertOn.Success : AlertOn.None)
+              | (vm.AlertOnFailure ? AlertOn.Failure : AlertOn.None)
+              | (vm.AlertOnError ? AlertOn.Error : AlertOn.None);
+
         job.Name = vm.Name;
         job.Description = vm.Description;
         job.SourceTable = vm.SourceTable;
@@ -212,6 +225,7 @@ public class JobsController : Controller
             ? DateTime.SpecifyKind(vm.SyncStartDate.Value, DateTimeKind.Utc)
             : null;
         job.JobAlertOn = vm.JobAlertOn;
+
         job.AlertEmailAddresses = vm.AlertEmailAddresses;
         job.SortOrder = vm.SortOrder;
         job.IsActive = vm.IsActive;

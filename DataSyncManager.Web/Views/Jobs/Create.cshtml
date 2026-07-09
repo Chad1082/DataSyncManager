@@ -231,13 +231,14 @@
                     <h6 class="text-muted text-uppercase fw-bold mb-3">Email Alerts</h6>
                     <div class="mb-3">
                         <label asp-for="JobAlertOn" class="form-label fw-semibold">Send alert when</label>
-                        <select asp-for="JobAlertOn" class="form-select">
-                            <option value="0">Never</option>
-                            <option value="1">Succeeded only</option>
-                            <option value="2">Failed only</option>
-                            <option value="4">Errors / partial only</option>
-                            <option value="7">Always</option>
-                        </select>
+                        <input asp-for="AlertOnSuccess" class="form-check-input" id="jAlertSuccess" />
+                        <label class="form-check-label" for="jAlertSuccess">Success</label>
+
+                        <input asp-for="AlertOnFailure" class="form-check-input" id="jAlertFailure" />
+                        <label class="form-check-label" for="jAlertFailure">Failure</label>
+
+                        <input asp-for="AlertOnError" class="form-check-input" id="jAlertError" />
+                        <label class="form-check-label" for="jAlertError">Errors</label>
                     </div>
                     <div class="mb-3">
                         <label asp-for="AlertEmailAddresses" class="form-label fw-semibold">Email Addresses</label>
