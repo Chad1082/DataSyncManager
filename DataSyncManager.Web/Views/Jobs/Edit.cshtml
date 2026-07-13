@@ -19,6 +19,8 @@
             <input type="hidden" asp-for="Id" />
             <input type="hidden" asp-for="ProjectId" />
             <input type="hidden" asp-for="SourceServerId" />
+            <input type="hidden" asp-for="SortOrder" />          @* ← add this *@
+            <input type="hidden" asp-for="IsActive" />           @* ← and probably this — see note *@
             <input type="hidden" id="selectedFieldsJson" name="SelectedFieldsJson" value="@Model.SelectedFieldsJson" />
 
             <!-- Source -->

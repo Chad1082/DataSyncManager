@@ -185,21 +185,40 @@
 </div>
 
 @section Scripts {
-@if (User.IsInRole("Admin"))
-{
-    <script>
-    const sortable = new Sortable(document.getElementById('jobsTableBody'), {
-        handle: '.drag-handle',
-        animation: 150,
-        onEnd: async () => {
-            const ids = [...document.querySelectorAll('#jobsTableBody tr')].map(r => parseInt(r.dataset.jobId));
-            await fetch('/Projects/ReorderJobs/@Model.Project.Id', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': document.querySelector('input[name=__RequestVerificationToken]')?.value ?? '' },
-                body: JSON.stringify(ids)
+    @if (User.IsInRole("Admin"))
+    {
+        <script>
+            const reorderUrl = '@Url.Action("ReorderJobs", "Projects", new { id = Model.Project.Id })';
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+
+            new Sortable(document.getElementById('jobsTableBody'), {
+                handle: '.drag-handle',
+                animation: 150,
+                onEnd: async () => {
+                    const ids = [...document.querySelectorAll('#jobsTableBody tr')]
+                        .map(r => parseInt(r.dataset.jobId))
+                        .filter(n => !Number.isNaN(n));
+                    try {
+                        const resp = await fetch(reorderUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'RequestVerificationToken': token
+                            },
+                            body: JSON.stringify(ids)
+                        });
+                        if (!resp.ok) {
+                            console.error('Reorder failed:', resp.status, await resp.text());
+                            alert('Failed to save order (HTTP ' + resp.status + '). Reloading.');
+                            location.reload();
+                        }
+                    } catch (err) {
+                        console.error('Reorder request error:', err);
+                        location.reload();
+                    }
+                }
             });
-        }
-    });
-    </script>
+        </script>
+    }
 }
 }
