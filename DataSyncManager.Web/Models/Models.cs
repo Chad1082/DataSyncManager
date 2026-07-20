@@ -87,6 +87,11 @@ public class SourceServer
     // ODBC command timeout in seconds (0 = no timeout / driver default). Ignored for SQL Server / REST API.
     public int OdbcCommandTimeout { get; set; } = 0;
 
+    // Windows timezone ID that the source's ChangeDateField values are stored in.
+    // e.g. "GMT Standard Time" for UK local (handles BST/GMT automatically), "UTC" if the source stores UTC.
+    [MaxLength(100)]
+    public string SourceTimeZone { get; set; } = "UTC";
+
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string? CreatedByUserId { get; set; }

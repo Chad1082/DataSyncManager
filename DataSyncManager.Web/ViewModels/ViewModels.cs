@@ -170,6 +170,13 @@ public class SourceServerViewModel
     [Display(Name = "Command Timeout (seconds)")]
     public int OdbcCommandTimeout { get; set; } = 0;
 
+    [MaxLength(100)]
+    [Display(Name = "Source Data Timezone")]
+    public string SourceTimeZone { get; set; } = "UTC";
+
+    // Populated by the controller for the dropdown
+    public List<SelectListItem> AvailableTimezones { get; set; } = new();
+
     public bool IsActive { get; set; } = true;
 }
 

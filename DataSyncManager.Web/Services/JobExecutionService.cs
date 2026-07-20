@@ -493,8 +493,15 @@ public class JobExecutionService : IJobExecutionService
     // ──────────────────────────────────────────────────────────
 
     private async Task<DataTable> FetchSourceDataAsync(Job job, SourceServer src,
-        DateTime? from, DateTime? to, CancellationToken ct)
+    DateTime? from, DateTime? to, CancellationToken ct)
     {
+        // Window bounds are computed in UTC, but the source's ChangeDateField is stored
+        // in the source server's local timezone. Convert the bounds into that zone so the
+        // comparison is like-for-like; otherwise the newest (offset-sized) slice of data
+        // is always excluded from the window.
+        from = ToSourceLocal(from, src);
+        to = ToSourceLocal(to, src);
+
         return src.SourceType switch
         {
             SourceType.SqlServer => await FetchSqlServerDataAsync(job, src, from, to, ct),
@@ -502,6 +509,16 @@ public class JobExecutionService : IJobExecutionService
             SourceType.RestApi => await FetchRestApiDataAsync(job, src, from, to, ct),
             _ => new DataTable()
         };
+    }
+
+    private static DateTime? ToSourceLocal(DateTime? utc, SourceServer src)
+    {
+        if (utc is null) return null;
+        TimeZoneInfo tz;
+        try { tz = TimeZoneInfo.FindSystemTimeZoneById(src.SourceTimeZone ?? "UTC"); }
+        catch { tz = TimeZoneInfo.Utc; }
+        var asUtc = DateTime.SpecifyKind(utc.Value, DateTimeKind.Utc);
+        return TimeZoneInfo.ConvertTimeFromUtc(asUtc, tz); // Unspecified-kind local wall-clock
     }
 
     private async Task<DataTable> FetchSqlServerDataAsync(Job job, SourceServer src,

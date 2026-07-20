@@ -4,6 +4,7 @@ using DataSyncManager.Web.Services;
 using DataSyncManager.Web.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
@@ -43,7 +44,8 @@ public class ServersController : Controller
     }
 
     [Authorize(Roles = "Admin")]
-    public IActionResult CreateSource() => View(new SourceServerViewModel());
+    public IActionResult CreateSource() =>
+        View(new SourceServerViewModel { AvailableTimezones = GetTimezoneList("UTC") });
 
     [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateSource(SourceServerViewModel vm)
@@ -58,7 +60,11 @@ public class ServersController : Controller
                 ModelState.AddModelError("DefaultDatabase", "Select a database.");
         }
 
-        if (!ModelState.IsValid) return View(vm);
+        if (!ModelState.IsValid)
+        {
+            vm.AvailableTimezones = GetTimezoneList(vm.SourceTimeZone);
+            return View(vm);
+        }
 
         var connectionString = vm.SourceType == SourceType.SqlServer
             ? BuildSourceConnectionString(vm.ServerAddress!, vm.UseWindowsAuth, vm.SqlUsername, vm.SqlPassword, vm.DefaultDatabase)
@@ -77,7 +83,8 @@ public class ServersController : Controller
             SourceDateFormat = string.IsNullOrWhiteSpace(vm.SourceDateFormat) ? "yyyy-MM-dd HH:mm:ss" : vm.SourceDateFormat.Trim(),
             OdbcCommandTimeout = vm.OdbcCommandTimeout,
             IsActive = vm.IsActive,
-            CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            SourceTimeZone = string.IsNullOrWhiteSpace(vm.SourceTimeZone) ? "UTC" : vm.SourceTimeZone
         };
 
         _db.SourceServers.Add(server);
@@ -106,7 +113,8 @@ public class ServersController : Controller
             SourceDateFormat = s.SourceDateFormat,
             OdbcCommandTimeout = s.OdbcCommandTimeout,
             IsActive = s.IsActive,
-            UseWindowsAuth = true
+            UseWindowsAuth = true,
+            SourceTimeZone = s.SourceTimeZone
         };
 
         if (s.SourceType == SourceType.SqlServer && !string.IsNullOrEmpty(s.ConnectionString))
@@ -122,7 +130,7 @@ public class ServersController : Controller
             }
             catch { /* leave fields empty if parse fails */ }
         }
-
+        vm.AvailableTimezones = GetTimezoneList(vm.SourceTimeZone);
         return View(vm);
     }
 
@@ -138,7 +146,11 @@ public class ServersController : Controller
                 ModelState.AddModelError("DefaultDatabase", "Select a database.");
         }
 
-        if (!ModelState.IsValid) return View(vm);
+        if (!ModelState.IsValid)
+        {
+            vm.AvailableTimezones = GetTimezoneList(vm.SourceTimeZone);
+            return View(vm);
+        }
 
         var s = await _db.SourceServers.FindAsync(id);
         if (s is null) return NotFound();
@@ -147,6 +159,7 @@ public class ServersController : Controller
         s.BaseUrl = vm.BaseUrl; s.AuthHeader = vm.AuthHeader; s.DefaultDatabase = vm.DefaultDatabase;
         s.RetryCount = vm.RetryCount; s.RetryDelaySeconds = vm.RetryDelaySeconds;
         s.SourceDateFormat = string.IsNullOrWhiteSpace(vm.SourceDateFormat) ? "yyyy-MM-dd HH:mm:ss" : vm.SourceDateFormat.Trim();
+        s.SourceTimeZone = string.IsNullOrWhiteSpace(vm.SourceTimeZone) ? "UTC" : vm.SourceTimeZone;
         s.OdbcCommandTimeout = vm.OdbcCommandTimeout;
         s.IsActive = vm.IsActive;
 
@@ -517,4 +530,13 @@ public class ServersController : Controller
         public string? Password { get; set; }
         public string? Database { get; set; }
     }
+    private static List<SelectListItem> GetTimezoneList(string? selected) =>
+        TimeZoneInfo.GetSystemTimeZones()
+            .Select(tz => new SelectListItem
+            {
+                Value = tz.Id,
+                Text = tz.DisplayName,
+                Selected = tz.Id == selected
+            })
+            .ToList();
 }

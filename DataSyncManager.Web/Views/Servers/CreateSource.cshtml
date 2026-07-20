@@ -225,7 +225,23 @@
                     </div>
                 </div>
             </div>
-
+            <div class="card shadow-sm mb-4">
+                <div class="card-header fw-semibold">
+                    <i class="bi bi-globe me-2"></i>Source Data Timezone
+                </div>
+                <div class="card-body">
+                    <label asp-for="SourceTimeZone" class="form-label fw-semibold">Timezone of the Change Date Field</label>
+                    <select asp-for="SourceTimeZone" asp-items="Model.AvailableTimezones" class="form-select"></select>
+                    <div class="form-text">
+                        The timezone that this source stores its change-date values in. Upsert sync windows are
+                        calculated in UTC and converted to this zone before filtering. Use
+                        <strong>GMT Standard Time</strong> for UK local time (handles BST automatically), or
+                        <strong>UTC</strong> if the source already stores UTC. Getting this wrong causes the most
+                        recent rows to be missed on every run.
+                    </div>
+                    <span asp-validation-for="SourceTimeZone" class="text-danger small"></span>
+                </div>
+            </div>
             <div class="card shadow-sm mb-4">
                 <div class="card-header fw-semibold">
                     <i class="bi bi-arrow-repeat me-2"></i>Retry Settings
