@@ -328,9 +328,16 @@ public class JobExecutionService : IJobExecutionService
         var syncTo = DateTime.UtcNow;
         var estimatedBatches = (int)Math.Ceiling((syncTo - syncFrom).TotalDays / (double)job.DaysPerBatch);
 
+
+        var srcFrom = ToSourceLocal(syncFrom, src);
+        var srcTo = ToSourceLocal(syncTo, src);
+        var tzLabel = src.SourceTimeZone ?? "UTC";
+
         await AddLog(db, run.Id, "Info",
             $"Sync window: {syncFrom:yyyy-MM-dd HH:mm} UTC → {syncTo:yyyy-MM-dd HH:mm} UTC " +
+            $"(applied as {srcFrom:yyyy-MM-dd HH:mm} → {srcTo:yyyy-MM-dd HH:mm} {tzLabel}) " +
             $"(~{estimatedBatches} batch{(estimatedBatches == 1 ? "" : "es")} of {job.DaysPerBatch}d) — {windowReason}", ct);
+
         await db.SaveChangesAsync(ct);
 
         // ── Batch loop ───────────────────────────────────────────────────────────
@@ -443,7 +450,8 @@ public class JobExecutionService : IJobExecutionService
 
         // ── Persist watermark and summary ────────────────────────────────────────
 
-        run.MaxSourceTimestamp = maxSourceTs;
+        //run.MaxSourceTimestamp = maxSourceTs;
+        run.MaxSourceTimestamp = FromSourceLocal(maxSourceTs, src);
 
         if (run.RowsRead == 0)
         {
@@ -519,6 +527,25 @@ public class JobExecutionService : IJobExecutionService
         catch { tz = TimeZoneInfo.Utc; }
         var asUtc = DateTime.SpecifyKind(utc.Value, DateTimeKind.Utc);
         return TimeZoneInfo.ConvertTimeFromUtc(asUtc, tz); // Unspecified-kind local wall-clock
+    }
+
+    private static DateTime? FromSourceLocal(DateTime? local, SourceServer src)
+    {
+        if (local is null) return null;
+        TimeZoneInfo tz;
+        try { tz = TimeZoneInfo.FindSystemTimeZoneById(src.SourceTimeZone ?? "UTC"); }
+        catch { tz = TimeZoneInfo.Utc; }
+
+        var unspecified = DateTime.SpecifyKind(local.Value, DateTimeKind.Unspecified);
+
+        // Guard the DST transitions: an invalid local time (spring-forward gap) has no
+        // UTC equivalent, and an ambiguous one (autumn fall-back) maps to two.
+        if (tz.IsInvalidTime(unspecified))
+            return TimeZoneInfo.ConvertTimeToUtc(unspecified.AddHours(1), tz);
+        if (tz.IsAmbiguousTime(unspecified))
+            return unspecified - tz.BaseUtcOffset;   // assume standard time
+
+        return TimeZoneInfo.ConvertTimeToUtc(unspecified, tz);
     }
 
     private async Task<DataTable> FetchSqlServerDataAsync(Job job, SourceServer src,
