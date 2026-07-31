@@ -533,6 +533,7 @@
         } else if (syncMode === 'FullReplace') {
             destSql = '-- Step 1: clear existing data\nTRUNCATE TABLE [' + destSchema + '].[' + destTbl + '];\n\n'
                     + '-- Step 2: bulk insert all source rows\n-- (SqlBulkCopy → [' + destSchema + '].[' + destTbl + '])';
+            }
         } else if (syncMode === 'Load') {
             destSql = '-- Append all source rows (no truncate, no merge)\n'
                 + '-- (SqlBulkCopy → [' + destSchema + '].[' + destTbl + '])';
