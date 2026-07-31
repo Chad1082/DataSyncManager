@@ -256,6 +256,12 @@ public class JobsController : Controller
         var job = await _db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
         if (job is null) return NotFound();
 
+        if (!job.IsActive)
+        {
+            TempData["Error"] = $"Job '{job.Name}' is inactive and cannot be run. Reactivate it first.";
+            return RedirectToAction("Details", "Projects", new { id = job.ProjectId });
+        }
+
         _bgJobs.Enqueue<ProjectRunner>(r => r.RunSingleJobAsync(id, CancellationToken.None));
         TempData["Success"] = $"Job '{job.Name}' queued for immediate execution.";
         return RedirectToAction("Details", "Projects", new { id = job.ProjectId });
@@ -274,6 +280,24 @@ public class JobsController : Controller
         await _db.SaveChangesAsync();
 
         TempData["Success"] = "Job deactivated.";
+        return RedirectToAction("Details", "Projects", new { id = projectId });
+    }
+
+    // ── Reactivate ───────────────────────────────────
+
+    [HttpPost, ValidateAntiForgeryToken, Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Reactivate(int id)
+    {
+        var job = await _db.Jobs.FindAsync(id);
+        if (job is null) return NotFound();
+
+        var projectId = job.ProjectId;
+        job.IsActive = true;
+        job.UpdatedAt = DateTime.UtcNow;
+        job.UpdatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        await _db.SaveChangesAsync();
+
+        TempData["Success"] = "Job reactivated.";
         return RedirectToAction("Details", "Projects", new { id = projectId });
     }
 

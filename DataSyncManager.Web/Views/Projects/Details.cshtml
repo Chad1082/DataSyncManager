@@ -132,14 +132,25 @@
                                 <i class="bi bi-pencil"></i>
                             </a>
                         }
-                        @if (User.IsInRole("Admin"))
-                        {
-                            <form asp-controller="Jobs" asp-action="Delete" asp-route-id="@job.Id" method="post" class="d-inline"
-                                  onsubmit="return confirm('Deactivate job @job.Name?')">
-                                @Html.AntiForgeryToken()
-                                <button class="btn btn-sm btn-outline-danger ms-1"><i class="bi bi-trash"></i></button>
-                            </form>
-                        }
+                            @if (User.IsInRole("Admin"))
+                            {
+                                @if (job.IsActive)
+                                {
+                                    <form asp-controller="Jobs" asp-action="Delete" asp-route-id="@job.Id" method="post" class="d-inline"
+                                          onsubmit="return confirm('Deactivate job @job.Name?')">
+                                        @Html.AntiForgeryToken()
+                                        <button class="btn btn-sm btn-outline-danger ms-1" title="Deactivate job"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <form asp-controller="Jobs" asp-action="Reactivate" asp-route-id="@job.Id" method="post" class="d-inline"
+                                          onsubmit="return confirm('Reactivate job @job.Name?')">
+                                        @Html.AntiForgeryToken()
+                                        <button class="btn btn-sm btn-outline-success ms-1" title="Reactivate job"><i class="bi bi-arrow-counterclockwise"></i></button>
+                                    </form>
+                                }
+                            }
                     </td>
                 </tr>
             }
