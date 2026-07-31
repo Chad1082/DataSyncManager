@@ -173,6 +173,7 @@
                         <select asp-for="SyncMode" class="form-select" id="syncModeSelect">
                             <option value="Upsert">Upsert (Insert / Update)</option>
                             <option value="FullReplace">Full Replace (Truncate & Load)</option>
+                            <option value="Load">Load (Append)</option>
                         </select>
                     </div>
                     <div id="upsertPanel">
@@ -667,7 +668,12 @@
                                        : '[' + destSchema + '].[' + destTbl + ']';
                 destSql = '-- Step 1: clear existing data\nTRUNCATE TABLE ' + fullRef + ';\n\n'
                         + '-- Step 2: bulk insert all source rows\n-- (SqlBulkCopy → ' + fullRef + ')';
-            } else {
+            } else if (syncMode === 'Load') {
+                const fullRef = destDb ? '[' + destDb + '].[' + destSchema + '].[' + destTbl + ']'
+                                       : '[' + destSchema + '].[' + destTbl + ']';
+                destSql = '-- Append all source rows (no truncate, no merge)\n'
+                        + '-- (SqlBulkCopy → ' + fullRef + ')';
+            }else {
                 const uniqueKeys = [...selectedUniqueKeys];
                 if (!fields.length) {
                     destSql = '-- Select fields above';

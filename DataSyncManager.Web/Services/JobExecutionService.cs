@@ -64,10 +64,18 @@ public class JobExecutionService : IJobExecutionService
             // Ensure destination table exists / has required columns
             await EnsureDestinationTableAsync(job, destServer, db, run.Id, ct);
 
-            if (job.SyncMode == SyncMode.FullReplace)
-                await ExecuteFullReplaceAsync(job, sourceServer, destServer, run, db, ct);
-            else
-                await ExecuteUpsertAsync(job, sourceServer, destServer, run, db, ct);
+            switch (job.SyncMode)
+            {
+                case SyncMode.FullReplace:
+                    await ExecuteFullReplaceAsync(job, sourceServer, destServer, run, db, ct);
+                    break;
+                case SyncMode.Load:
+                    await ExecuteLoadAsync(job, sourceServer, destServer, run, db, ct);
+                    break;
+                default:
+                    await ExecuteUpsertAsync(job, sourceServer, destServer, run, db, ct);
+                    break;
+            }
 
             run.Status = run.Logs.Any(l => l.Level == "Error") ? RunStatus.PartialSuccess : RunStatus.Succeeded;
         }
@@ -466,6 +474,65 @@ public class JobExecutionService : IJobExecutionService
                 $"Upsert complete: {run.RowsRead} read, {run.RowsInserted} inserted, {run.RowsUpdated} updated{watermarkMsg}", ct);
         }
 
+        await db.SaveChangesAsync(ct);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Load Mode (append-only — bulk insert, no truncate, no merge)
+    // ──────────────────────────────────────────────────────────
+
+    private async Task ExecuteLoadAsync(Job job, SourceServer src, DestinationServer dest,
+        JobRun run, ApplicationDbContext db, CancellationToken ct)
+    {
+        await AddLog(db, run.Id, "Info", "Mode: Load (append)", ct);
+        await db.SaveChangesAsync(ct);
+
+        var data = await FetchSourceDataAsync(job, src, null, null, ct);
+        run.RowsRead = data.Rows.Count;
+        await AddLog(db, run.Id, "Info", $"Read {run.RowsRead} rows from source", ct);
+
+        // Reconcile: drop any fields absent from the source DataTable
+        var activeFields = await ReconcileFieldsAsync(job, data, dest, db, run.Id, ct);
+
+        var parts = job.DestinationTable.Split('.');
+        var schema = parts.Length == 2 ? parts[0] : "dbo";
+        var table = parts.Length == 2 ? parts[1] : job.DestinationTable;
+
+        var csb = new SqlConnectionStringBuilder(dest.ConnectionString) { InitialCatalog = job.DestinationDatabase };
+
+        await ExecuteWithRetryAsync(dest.RetryCount, dest.RetryDelaySeconds, async () =>
+        {
+            await using var conn = new SqlConnection(csb.ConnectionString);
+            await conn.OpenAsync(ct);
+
+            // Wrap the bulk insert in a transaction so a mid-copy failure never
+            // leaves a partial batch appended to the destination.
+            await using var tx = (SqlTransaction)await conn.BeginTransactionAsync(ct);
+            try
+            {
+                // NB: no TRUNCATE — existing rows are retained; source rows are appended.
+                using var bulk = new SqlBulkCopy(conn, SqlBulkCopyOptions.Default, tx)
+                {
+                    DestinationTableName = $"[{schema}].[{table}]",
+                    BulkCopyTimeout = 0  // 0 = no timeout
+                };
+                foreach (var f in activeFields)
+                    bulk.ColumnMappings.Add(f.SourceFieldName, f.DestinationFieldName ?? f.SourceFieldName);
+
+                await bulk.WriteToServerAsync(data, ct);
+                run.RowsInserted = data.Rows.Count;
+
+                await tx.CommitAsync(ct);
+            }
+            catch
+            {
+                await tx.RollbackAsync(ct);
+                throw;
+            }
+        }, run, db, ct,
+        context: $"Job '{job.Name}' | {src.Name} → {dest.Name} | {job.SourceTable} → [{job.DestinationDatabase}].[{job.DestinationTable}] | Load");
+
+        await AddLog(db, run.Id, "Info", $"Appended {run.RowsInserted} rows", ct);
         await db.SaveChangesAsync(ct);
     }
 

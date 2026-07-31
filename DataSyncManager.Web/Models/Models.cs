@@ -30,7 +30,8 @@ public enum SourceType
 public enum SyncMode
 {
     FullReplace = 1,
-    Upsert = 2
+    Upsert = 2,
+    Load = 3
 }
 
 public enum RunStatus

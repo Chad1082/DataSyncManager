@@ -109,15 +109,21 @@
                     <div class="d-flex gap-4 mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="SyncMode" id="modeReplace"
-                                   value="FullReplace" @(!isUpsert ? "checked" : "")>
+                                   value="FullReplace" @(Model.SyncMode == SyncMode.FullReplace ? "checked" : "")>
                             <label class="form-check-label fw-semibold" for="modeReplace">Full Replace</label>
                             <div class="text-muted small">Truncate destination then bulk insert all rows.</div>
                         </div>
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="SyncMode" id="modeUpsert"
-                                   value="Upsert" @(isUpsert ? "checked" : "")>
+                                   value="Upsert" @(Model.SyncMode == SyncMode.Upsert ? "checked" : "")>
                             <label class="form-check-label fw-semibold" for="modeUpsert">Upsert</label>
                             <div class="text-muted small">Insert new rows and update changed rows.</div>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="SyncMode" id="modeLoad"
+                                   value="Load" @(Model.SyncMode == SyncMode.Load ? "checked" : "")>
+                            <label class="form-check-label fw-semibold" for="modeLoad">Load</label>
+                            <div class="text-muted small">Append all source rows; existing rows are kept.</div>
                         </div>
                     </div>
 
@@ -527,7 +533,12 @@
         } else if (syncMode === 'FullReplace') {
             destSql = '-- Step 1: clear existing data\nTRUNCATE TABLE [' + destSchema + '].[' + destTbl + '];\n\n'
                     + '-- Step 2: bulk insert all source rows\n-- (SqlBulkCopy → [' + destSchema + '].[' + destTbl + '])';
-        } else {
+            }
+        } else if (syncMode === 'Load') {
+            destSql = '-- Append all source rows (no truncate, no merge)\n'
+                + '-- (SqlBulkCopy → [' + destSchema + '].[' + destTbl + '])';
+        }
+        else {
             if (!fields.length) {
                 destSql = '-- Fields are still loading...';
             } else if (!uniqueKeys.length) {
