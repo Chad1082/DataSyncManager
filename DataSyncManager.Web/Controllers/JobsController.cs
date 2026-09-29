@@ -330,27 +330,40 @@ public class JobsController : Controller
     {
         if (string.IsNullOrWhiteSpace(json)) return;
 
+        List<JobFieldDto> fields;
         try
         {
-            var fields = JsonConvert.DeserializeObject<List<JobFieldDto>>(json) ?? new();
-            int order = 0;
-            foreach (var f in fields)
-            {
-                _db.JobFields.Add(new JobField
-                {
-                    JobId = jobId,
-                    SourceFieldName = f.SourceFieldName,
-                    DestinationFieldName = f.DestinationFieldName,
-                    DataType = f.DataType,
-                    MaxLength = f.MaxLength,
-                    IsNullable = f.IsNullable,
-                    IsIncluded = f.IsIncluded,
-                    SortOrder = order++
-                });
-            }
-            await _db.SaveChangesAsync();
+            fields = JsonConvert.DeserializeObject<List<JobFieldDto>>(json) ?? new();
         }
-        catch { /* ignore JSON parse errors */ }
+        catch
+        {
+            return; // ignore JSON parse errors
+        }
+
+        // Guard against duplicate rows (e.g. field grid rendered twice).
+        // SQL Server column names are case-insensitive, so compare that way.
+        var deduped = fields
+            .Where(f => !string.IsNullOrWhiteSpace(f.SourceFieldName))
+            .GroupBy(f => f.SourceFieldName.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+
+        int order = 0;
+        foreach (var f in deduped)
+        {
+            _db.JobFields.Add(new JobField
+            {
+                JobId = jobId,
+                SourceFieldName = f.SourceFieldName.Trim(),
+                DestinationFieldName = f.DestinationFieldName,
+                DataType = f.DataType,
+                MaxLength = f.MaxLength,
+                IsNullable = f.IsNullable,
+                IsIncluded = f.IsIncluded,
+                SortOrder = order++
+            });
+        }
+        await _db.SaveChangesAsync();
     }
 
     private class JobFieldDto

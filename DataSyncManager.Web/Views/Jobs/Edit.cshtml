@@ -378,6 +378,8 @@
 
     function renderFields(cols) {
         const container = document.getElementById('fieldsContainer');
+            container.innerHTML = '';                                          // ← clear previous render
+            document.getElementById('fieldsEmpty').classList.add('d-none');    // ← reset empty-state
         if (!cols || !cols.length) {
             document.getElementById('fieldsEmpty').classList.remove('d-none');
             return;

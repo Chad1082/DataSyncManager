@@ -368,6 +368,7 @@ public class JobExecutionService : IJobExecutionService
         var setClause = string.Empty;
         var insColList = string.Empty;
         var insValList = string.Empty;
+        var stagingColList = string.Empty;
 
         var csb = new SqlConnectionStringBuilder(dest.ConnectionString) { InitialCatalog = job.DestinationDatabase };
 
@@ -391,11 +392,22 @@ public class JobExecutionService : IJobExecutionService
             {
                 activeFields = await ReconcileFieldsAsync(job, data, dest, db, run.Id, ct);
 
+                // Defensive: collapse duplicate destination columns
+                var beforeCount = activeFields.Count;
+                activeFields = activeFields
+                    .GroupBy(f => f.DestinationFieldName ?? f.SourceFieldName, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+                if (activeFields.Count < beforeCount)
+                    await AddLog(db, run.Id, "Warn",
+                        $"{beforeCount - activeFields.Count} duplicate field mapping(s) ignored — check the job's field list.", ct);
+
                 var activeFieldList = activeFields.Select(f => f.DestinationFieldName ?? f.SourceFieldName).ToList();
                 onClause = string.Join(" AND ", keys.Select(k => $"t.[{k.Trim()}] = s.[{k.Trim()}]"));
                 setClause = string.Join(", ", activeFieldList.Where(f => !keys.Select(k => k.Trim()).Contains(f)).Select(f => $"t.[{f}] = s.[{f}]"));
                 insColList = string.Join(", ", activeFieldList.Select(f => $"[{f}]"));
                 insValList = string.Join(", ", activeFieldList.Select(f => $"s.[{f}]"));
+                stagingColList = insColList;
             }
 
             if (estimatedBatches > 1)
@@ -426,8 +438,7 @@ public class JobExecutionService : IJobExecutionService
                     await using var conn = new SqlConnection(csb.ConnectionString);
                     await conn.OpenAsync(ct);
 
-                    var stagingCols = string.Join(", ", job.JobFields.Select(f => $"[{f.DestinationFieldName ?? f.SourceFieldName}]"));
-                    await new SqlCommand($"SELECT TOP 0 {stagingCols} INTO {staging} FROM [{schema}].[{table}]", conn)
+                    await new SqlCommand($"SELECT TOP 0 {stagingColList} INTO {staging} FROM [{schema}].[{table}]", conn)
                     {
                         CommandTimeout = 0
                     }.ExecuteNonQueryAsync(ct);
